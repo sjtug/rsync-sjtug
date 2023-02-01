@@ -21,6 +21,11 @@ versions older than 2.6.0 are supported.
 * **rsync-gateway** - serves the mirrored repository from s3 in **http** protocol.
 * **rsync-gc** - periodically removes old versions of files from s3.
 
+## Design
+
+File data and their metadata are stored separately. Data is saved in S3 storage, named by their blake2b hash.
+Metadata is stored in Redis for fast access.
+
 ## Delta Transfer
 
 rsync-sjtug implements the delta transfer algorithm described in the rsync protocol specification, which can reduce the

@@ -6,15 +6,15 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1"
+blake2 = "0.10"
 clap = { version = "4.1", features = ["derive"] }
 clean-path = "0.2"
 color-eyre = "0.6"
+digest = "0.10"
 eyre = "0.6"
 filetime = "0.2"
 md4 = "0.10"
 num = "0.4"
-rusoto_core = "0.48"
-rusoto_s3 = "0.48"
 scan_fmt = "0.2"
 tempfile = "3.3"
 tokio = { version = "1.25", features = ["full"] }
