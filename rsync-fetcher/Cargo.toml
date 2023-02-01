@@ -1,0 +1,24 @@
+[package]
+name = "rsync-fetcher"
+version = "0.1.0"
+edition = "2021"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = "0.1"
+clap = { version = "4.1", features = ["derive"] }
+clean-path = "0.2"
+color-eyre = "0.6"
+eyre = "0.6"
+filetime = "0.2"
+md4 = "0.10"
+num = "0.4"
+rusoto_core = "0.48"
+rusoto_s3 = "0.48"
+scan_fmt = "0.2"
+tempfile = "3.3"
+tokio = { version = "1.25", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+unix_mode = "0.1"
+url = "2.3"
