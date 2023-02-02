@@ -15,6 +15,8 @@ eyre = "0.6"
 filetime = "0.2"
 md4 = "0.10"
 num = "0.4"
+rand = "0.8"
+redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"] }
 scan_fmt = "0.2"
 tempfile = "3.3"
 tokio = { version = "1.25", features = ["full"] }
