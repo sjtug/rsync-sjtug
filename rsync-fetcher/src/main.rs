@@ -9,8 +9,10 @@ use crate::rsync::start_socket_client;
 
 mod filter;
 mod opts;
+mod plan;
 mod redis_;
 mod rsync;
+mod set_ops;
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -6,15 +6,19 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1"
+bincode = "2.0.0-rc.2"
 blake2 = "0.10"
 clap = { version = "4.1", features = ["derive"] }
 clean-path = "0.2"
 color-eyre = "0.6"
 digest = "0.10"
+either = "1.8"
 eyre = "0.6"
 filetime = "0.2"
+futures = "0.3"
 md4 = "0.10"
 num = "0.4"
+pin-project = "1.0"
 rand = "0.8"
 redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"] }
 scan_fmt = "0.2"
