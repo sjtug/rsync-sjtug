@@ -102,6 +102,7 @@ pub async fn generate_transfer_plan(
                             // We book the old hash so that we may download the file on s3 and perform delta
                             // transfer.
                             // TODO: if delta transfer is disabled, set blake2b_hash to None
+                            // TODO: or we can't set it to None, because we need to detect partial-stale?
                             let blake2b_hash = match metadata.extra {
                                 MetaExtra::Symlink { .. } => None,
                                 MetaExtra::Regular { blake2b_hash } => Some(blake2b_hash),

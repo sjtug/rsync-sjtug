@@ -23,8 +23,29 @@ versions older than 2.6.0 are supported.
 
 ## Design
 
-File data and their metadata are stored separately. Data is saved in S3 storage, named by their blake2b hash.
+File data and their metadata are stored separately.
+
+### Data
+
+Files are stored in S3 storage, named by their blake2b-160 hash.
+
+### Metadata
+
 Metadata is stored in Redis for fast access.
+
+Note that there are more than one file index in Redis.
+
+- `<namespace>:index:<timestamp>` - an index of the repository synced at `<timestamp>`.
+- `<namespace>:partial` - a partial index that is still being updated and not committed yet.
+- `<namespace>:partial-stale` - a temporary index that is used to store outdated files when updating the partial index.
+  This might happen if you interrupt a synchronization, restart it, and some files downloaded in the first run are
+  already outdated. It's ready to be garbage collected.
+- `<namespace>:stale:<timestamp>` - an index that is taken out of production, and is ready to be garbage collected.
+
+For each index, two keys are used to store the metadata:
+
+- `<prefix>:zset` - a sorted set of file paths, lexically sorted.
+- `<prefix>:hash` - a hash of file metadata, keyed by file path.
 
 ## Delta Transfer
 

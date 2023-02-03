@@ -127,6 +127,9 @@ impl Receiver {
         } = self.recv_data(basis_file).await?;
 
         let entry = &self.file_list[idx];
+
+        // TODO check if a previous uploaded file is outdated, and add it to partial-stale if it is.
+
         // Upload file to S3.
         let body = ByteStream::read_from().file(target_file).build().await?;
         self.s3
