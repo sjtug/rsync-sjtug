@@ -1,8 +1,12 @@
-use crate::opts::RedisOpts;
-use eyre::bail;
+use std::time::SystemTime;
+
 use eyre::Result;
-use redis::{Commands, Script};
-use tracing::{error, warn};
+use eyre::{bail, ensure};
+use redis::{aio, Commands, Script};
+use tracing::{error, info, warn};
+
+use crate::opts::RedisOpts;
+use crate::plan::Metadata;
 
 /// An instance lock based on Redis.
 pub struct RedisLock {
@@ -82,4 +86,58 @@ pub fn acquire_instance_lock(client: &redis::Client, opts: &RedisOpts) -> Result
     };
 
     Ok(lock)
+}
+
+pub async fn update_metadata(
+    redis: &mut impl aio::ConnectionLike,
+    prefix: &str,
+    path: &[u8],
+    metadata: Metadata,
+) -> Result<()> {
+    let (zset_key, hash_key) = (format!("{prefix}:zset"), format!("{prefix}:hash"));
+
+    let (z_added, h_added): (usize, usize) = redis::pipe()
+        .atomic()
+        .zadd(zset_key, path, 0)
+        .hset(hash_key, path, metadata)
+        .query_async(redis)
+        .await?;
+
+    // TODO rollback
+    ensure!(z_added == 1, "zadd failed");
+    ensure!(h_added == 1, "hset failed");
+
+    Ok(())
+}
+
+/// Commit a completed transfer and put the new index into effect.
+pub async fn commit_transfer(redis: &mut impl aio::ConnectionLike, namespace: &str) -> Result<()> {
+    info!("commit transfer");
+
+    let (old_zset_key, old_hash_key) = (
+        format!("{namespace}:partial:zset"),
+        format!("{namespace}:partial:hash"),
+    );
+
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("system time is before UNIX epoch")
+        .as_secs();
+    let (new_zset_key, new_hash_key) = (
+        format!("{namespace}:index:{timestamp}:zset"),
+        format!("{namespace}:index:{timestamp}:hash"),
+    );
+
+    let (z_succ, h_succ): (bool, bool) = redis::pipe()
+        .atomic()
+        .rename(old_zset_key, new_zset_key)
+        .rename(old_hash_key, new_hash_key)
+        .query_async(redis)
+        .await?;
+
+    // TODO rollback
+    ensure!(z_succ, "zset rename failed");
+    ensure!(h_succ, "hash rename failed");
+
+    Ok(())
 }

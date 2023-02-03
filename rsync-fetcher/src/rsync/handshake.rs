@@ -5,28 +5,27 @@
 
 use eyre::{bail, Result};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::net::tcp::{ReadHalf, WriteHalf};
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 use tracing::{debug, instrument};
 
-use crate::filter::Rule;
 use crate::rsync::envelope::EnvelopeRead;
-use crate::rsync::generator::Generator;
-use crate::rsync::receiver::Receiver;
+use crate::rsync::filter::Rule;
+use crate::rsync::mux_conn::MuxConn;
 use crate::rsync::version::{Version, SUPPORTED_VERSION};
 
 /// Represents a connection that is in the handshake phase.
 ///
 /// Note that in this stage no multiplexing is done.
 #[derive(Debug)]
-pub struct HandshakeConn<'a> {
-    pub tx: WriteHalf<'a>,
-    pub rx: BufReader<ReadHalf<'a>>,
+pub struct HandshakeConn {
+    pub tx: OwnedWriteHalf,
+    pub rx: BufReader<OwnedReadHalf>,
 }
 
-impl<'a> HandshakeConn<'a> {
-    pub fn new(stream: &'a mut TcpStream) -> Self {
-        let (rx, tx) = stream.split();
+impl HandshakeConn {
+    pub fn new(stream: TcpStream) -> Self {
+        let (rx, tx) = stream.into_split();
         Self {
             tx,
             rx: BufReader::with_capacity(256 * 1024, rx),
@@ -76,15 +75,14 @@ impl<'a> HandshakeConn<'a> {
     }
 
     #[instrument(skip(self))]
-    pub async fn finalize(mut self, rules: &[Rule]) -> Result<(Generator<'a>, Receiver<'a>)> {
+    pub async fn finalize(mut self, rules: &[Rule]) -> Result<MuxConn> {
         let seed = self.rx.read_i32_le().await?;
         debug!(seed);
 
         self.send_filter_rules(rules).await?;
 
-        Ok((
-            Generator::new(self.tx, seed),
-            Receiver::new(EnvelopeRead::new(self.rx), seed), // start multiplexing
-        ))
+        let rx = EnvelopeRead::new(self.rx);
+
+        Ok(MuxConn::new(self.tx, rx, seed))
     }
 }

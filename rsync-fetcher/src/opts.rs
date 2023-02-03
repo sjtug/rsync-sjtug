@@ -3,21 +3,26 @@ use std::ffi::OsString;
 use clap::{ArgAction, Parser};
 use url::Url;
 
-use crate::filter::Rule;
+use crate::rsync::filter::Rule;
 
 #[derive(Parser)]
 pub struct Opts {
     /// Rsync remote url.
     pub src: Url,
-    /// S3 storage url.
-    /// Format: https://your.domain/bucket_name
+    /// S3 endpoint url.
     /// For specifying authentication, use environment variables:
     /// AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-    pub dest: Url,
+    pub s3_url: Url,
+    /// S3 storage region.
+    pub s3_region: String,
+    /// S3 storage bucket.
+    pub s3_bucket: String,
+    /// S3 storage prefix.
+    pub s3_prefix: String,
     /// Metadata storage url. (Redis)
     pub redis: Url,
     /// Metadata namespace. Need to be unique for each repository.
-    pub namespace: String,
+    pub redis_namespace: String,
     /// Force break existing lock.
     /// Only use this if you are sure there's no other fetch process running on the same namespace.
     pub force_break: bool,
@@ -30,6 +35,26 @@ pub struct Opts {
 }
 
 #[derive(Debug, Clone)]
+pub struct S3Opts {
+    pub region: String,
+    pub url: Url,
+    pub bucket: String,
+    // With end slash.
+    pub prefix: String,
+}
+
+impl From<&Opts> for S3Opts {
+    fn from(opts: &Opts) -> Self {
+        Self {
+            region: opts.s3_region.clone(),
+            url: opts.s3_url.clone(),
+            bucket: opts.s3_bucket.clone(),
+            prefix: opts.s3_prefix.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct RedisOpts {
     pub namespace: String,
     pub force_break: bool,
@@ -38,7 +63,7 @@ pub struct RedisOpts {
 impl From<&Opts> for RedisOpts {
     fn from(opts: &Opts) -> Self {
         Self {
-            namespace: opts.namespace.clone(),
+            namespace: opts.redis_namespace.clone(),
             force_break: opts.force_break,
         }
     }

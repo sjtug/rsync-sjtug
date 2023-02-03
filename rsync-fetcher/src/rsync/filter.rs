@@ -4,10 +4,15 @@ use std::os::unix::ffi::OsStrExt;
 use eyre::Result;
 use tokio::io::AsyncWriteExt;
 
-use crate::filter::Rule;
 use crate::rsync::handshake::HandshakeConn;
 
 const EXCLUSION_LIST_END: i32 = 0;
+
+#[derive(Debug, Clone)]
+pub enum Rule {
+    Exclude(OsString),
+    Include(OsString),
+}
 
 impl Rule {
     fn to_command(&self) -> OsString {
@@ -26,7 +31,7 @@ impl Rule {
     }
 }
 
-impl<'a> HandshakeConn<'a> {
+impl HandshakeConn {
     pub async fn send_filter_rules(&mut self, rules: &[Rule]) -> Result<()> {
         for rule in rules {
             let cmd = rule.to_command();

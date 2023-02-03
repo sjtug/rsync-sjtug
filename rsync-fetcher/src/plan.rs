@@ -1,12 +1,12 @@
 //! Transfer plan.
 use std::ops::ControlFlow;
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use bincode::config::Configuration;
 use bincode::{Decode, Encode};
 use either::Either;
 use eyre::Result;
-use futures::{pin_mut, stream, Stream, StreamExt, TryStream, TryStreamExt};
+use futures::{pin_mut, stream, Stream, StreamExt, TryStreamExt};
 use redis::{
     AsyncCommands, AsyncIter, Client, FromRedisValue, RedisError, RedisResult, RedisWrite,
     ToRedisArgs, Value,
@@ -19,8 +19,8 @@ use crate::set_ops::{into_union, with_sorted_iter, Case};
 const BINCODE_CONFIG: Configuration = bincode::config::standard();
 
 pub struct TransferItem {
-    idx: i32,
-    blake2b_hash: Option<[u8; 20]>,
+    pub idx: u32,
+    pub blake2b_hash: Option<[u8; 20]>,
 }
 
 fn async_iter_to_stream<T: FromRedisValue + Unpin>(
@@ -61,7 +61,7 @@ pub async fn generate_transfer_plan(
     pin_mut!(latest_iter, partial_iter);
 
     // local = latest + partial
-    let local = into_union(partial_iter, latest_iter, |x, y| x.cmp(&y));
+    let local = into_union(partial_iter, latest_iter, Ord::cmp);
     pin_mut!(local);
 
     // Generate the transfer plan.
@@ -93,7 +93,8 @@ pub async fn generate_transfer_plan(
                         let metadata: Metadata = mux_conn
                             .hget(format!("{namespace}:{local_loc}:hash"), local.into_inner())
                             .await?;
-                        if remote.len == metadata.len && remote.modify_time == metadata.modify_time
+                        if remote.len == metadata.len
+                            && mod_time_eq(remote.modify_time, metadata.modify_time)
                         {
                             // File is the same, no need to transfer
                             ControlFlow::Continue(())
@@ -101,9 +102,13 @@ pub async fn generate_transfer_plan(
                             // We book the old hash so that we may download the file on s3 and perform delta
                             // transfer.
                             // TODO: if delta transfer is disabled, set blake2b_hash to None
+                            let blake2b_hash = match metadata.extra {
+                                MetaExtra::Symlink { .. } => None,
+                                MetaExtra::Regular { blake2b_hash } => Some(blake2b_hash),
+                            };
                             ControlFlow::Break(TransferItem {
                                 idx: remote.idx,
-                                blake2b_hash: Some(metadata.blake2b_hash),
+                                blake2b_hash,
                             })
                         }
                     }
@@ -121,9 +126,18 @@ pub async fn generate_transfer_plan(
 pub struct Metadata {
     pub len: u64,
     pub modify_time: SystemTime,
-    // maybe PathBuf?
-    pub link_target: Option<Vec<u8>>,
-    pub blake2b_hash: [u8; 20],
+    pub extra: MetaExtra,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum MetaExtra {
+    Symlink {
+        // maybe PathBuf?
+        target: Vec<u8>,
+    },
+    Regular {
+        blake2b_hash: [u8; 20],
+    },
 }
 
 impl FromRedisValue for Metadata {
@@ -156,4 +170,13 @@ impl ToRedisArgs for Metadata {
         let buf = bincode::encode_to_vec(self, BINCODE_CONFIG).expect("bincode encode failed");
         out.write_arg(&buf);
     }
+}
+
+pub fn mod_time_eq(x: SystemTime, y: SystemTime) -> bool {
+    x.duration_since(UNIX_EPOCH)
+        .expect("time before unix epoch")
+        .as_secs()
+        == y.duration_since(UNIX_EPOCH)
+            .expect("time before unix epoch")
+            .as_secs()
 }

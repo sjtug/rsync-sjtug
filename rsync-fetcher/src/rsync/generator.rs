@@ -1,47 +1,71 @@
 use std::cmp::min;
 use std::ffi::OsStr;
+use std::io::SeekFrom;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use eyre::Result;
 use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::tcp::WriteHalf;
-use tracing::info;
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
+use tokio::net::tcp::OwnedWriteHalf;
+use tracing::{debug, info, warn};
 
+use crate::opts::S3Opts;
+use crate::plan::TransferItem;
 use crate::rsync::checksum::{checksum_1, checksum_2, SumHead};
 use crate::rsync::file_list::FileEntry;
+use crate::utils::{hash, ToHex};
 
-pub struct Generator<'a> {
-    tx: WriteHalf<'a>,
+/// Generator sends requests to rsync server.
+pub struct Generator {
+    tx: OwnedWriteHalf,
+    file_list: Arc<Vec<FileEntry>>,
     seed: i32,
+    s3: aws_sdk_s3::Client,
+    s3_opts: S3Opts,
+    basis_dir: PathBuf,
 }
 
-impl<'a> Generator<'a> {
-    pub const fn new(tx: WriteHalf<'a>, seed: i32) -> Self {
-        Self { tx, seed }
+impl Generator {
+    pub const fn new(
+        tx: OwnedWriteHalf,
+        file_list: Arc<Vec<FileEntry>>,
+        seed: i32,
+        s3: aws_sdk_s3::Client,
+        s3_opts: S3Opts,
+        basis_dir: PathBuf,
+    ) -> Self {
+        Self {
+            tx,
+            file_list,
+            seed,
+            s3,
+            s3_opts,
+            basis_dir,
+        }
     }
 }
 
-impl<'a> Deref for Generator<'a> {
-    type Target = WriteHalf<'a>;
+impl Deref for Generator {
+    type Target = OwnedWriteHalf;
 
     fn deref(&self) -> &Self::Target {
         &self.tx
     }
 }
 
-impl<'a> DerefMut for Generator<'a> {
+impl DerefMut for Generator {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.tx
     }
 }
 
-impl<'a> Generator<'a> {
-    pub async fn generate_task(&mut self, file_list: &[FileEntry]) -> Result<()> {
-        for entry in file_list {
+impl Generator {
+    pub async fn generate_task(&mut self, transfer_plan: &[TransferItem]) -> Result<()> {
+        for entry in transfer_plan {
             self.recv_generator(entry).await?;
         }
 
@@ -55,58 +79,59 @@ impl<'a> Generator<'a> {
         info!("generator finish");
         Ok(())
     }
-    async fn recv_generator(&mut self, entry: &FileEntry) -> Result<()> {
-        let filename = Path::new(OsStr::from_bytes(&entry.name));
-        // TODO s3 impl: merge s3 file index and local partial index, compare to s3, and generate missing files.
-
-        // NOTE the following impl doesn't consider
-        // 1. expect file, but dir exists
-        // 2. permission incorrect
-        // 3. soft links & hardlinks
-        // 4. non regular files
+    async fn recv_generator(&mut self, item: &TransferItem) -> Result<()> {
+        let entry = &self.file_list[item.idx as usize];
+        let idx = entry.idx;
+        let path = Path::new(OsStr::from_bytes(&entry.name));
 
         if unix_mode::is_dir(entry.mode) {
             // No need to create dir in S3 storage.
             return Ok(());
         }
 
-        // TODO we skip all non-regular files
+        // We skip all non-regular files. Symlinks are skipped too.
         if !unix_mode::is_file(entry.mode) {
+            warn!(?path, "skip non-regular file");
             return Ok(());
         }
 
-        // TODO check if skip file by metadata
-        // check if skip file
-        // let meta = tokio::fs::metadata(opts.dest.join(filename))
-        //     .await
-        //     .map(|m| Some(m))
-        //     .or_else(|e| {
-        //         if e.kind() == std::io::ErrorKind::NotFound {
-        //             Ok(None)
-        //         } else {
-        //             Err(e)
-        //         }
-        //     })?;
-        // if let Some(meta) = meta {
-        //     if meta.size() == entry.len && mod_time_eq(meta.modified()?, entry.modify_time) {
-        //         return Ok(());
-        //     }
-        // }
+        if let Some(blake2b_hash) = &item.blake2b_hash {
+            // We have a basis file. Use it to initiate a delta transfer
+            info!(?path, idx, "requesting partial file");
 
-        // TODO if delta transfer is enabled, download file from s3 and generate hash.
-        // if let Some(f) = File::open(opts.dest.join(filename)).await.ok() {
-        //     info!(?filename, idx = entry.idx, "requesting partial file");
-        //     // incremental mode
-        //     self.write_i32_le(entry.idx).await?;
-        //     self.generate_and_send_sums(f).await?;
-        // } else {
-        info!(?filename, idx = entry.idx, "requesting full file");
-        // full mode
-        self.write_i32_le(entry.idx).await?;
-        SumHead::default().write_to(&mut **self).await?;
-        // }
+            debug!(?path, hash=%format!("{:x}", blake2b_hash.as_hex()), "download basis file");
+            let basis_file = self.download_basis_file(blake2b_hash, &entry.name).await?;
+
+            self.write_u32_le(idx).await?;
+            self.generate_and_send_sums(basis_file).await?;
+        } else {
+            info!(?path, idx, "requesting full file");
+
+            self.write_u32_le(idx).await?;
+            SumHead::default().write_to(&mut **self).await?;
+        }
 
         Ok(())
+    }
+    async fn download_basis_file(&self, blake2b_hash: &[u8; 20], path: &[u8]) -> Result<File> {
+        let basis_path = self.basis_dir.join(format!("{:x}", hash(path).as_hex()));
+        let mut basis_file = File::create(basis_path).await?;
+        let obj = self
+            .s3
+            .get_object()
+            .bucket(&self.s3_opts.bucket)
+            .key(format!(
+                "{}{:x}",
+                self.s3_opts.prefix,
+                blake2b_hash.as_hex()
+            ))
+            .send()
+            .await?;
+        let mut body = BufReader::new(obj.body.into_async_read());
+        tokio::io::copy(&mut body, &mut basis_file).await?;
+
+        basis_file.seek(SeekFrom::Start(0)).await?;
+        Ok(basis_file)
     }
     async fn generate_and_send_sums(&mut self, mut file: File) -> Result<()> {
         let file_len = file.metadata().await?.size();

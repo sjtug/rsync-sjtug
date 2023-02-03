@@ -1,51 +1,54 @@
 use eyre::Result;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tracing::{info, warn};
 use url::Url;
 
-use crate::opts::RsyncOpts;
+use crate::rsync::envelope::RsyncReadExt;
 use crate::rsync::handshake::HandshakeConn;
-use crate::rsync::stats::finalize;
+use crate::rsync::stats::Stats;
 
 mod checksum;
 mod envelope;
 pub mod file_list;
-mod filter;
+pub mod filter;
 mod generator;
 mod handshake;
+mod mux_conn;
 mod receiver;
-mod stats;
+pub mod stats;
 mod version;
 
-pub async fn start_socket_client(url: Url, opts: &RsyncOpts) -> Result<()> {
+const BYE: i32 = -1;
+
+pub async fn start_handshake(url: &Url) -> Result<HandshakeConn> {
     let port = url.port().unwrap_or(873);
     let path = url.path().trim_start_matches('/');
     let module = path.split('/').next().unwrap_or("must have module");
 
-    let mut stream = TcpStream::connect(format!("{}:{}", url.host_str().expect("has host"), port))
+    let stream = TcpStream::connect(format!("{}:{}", url.host_str().expect("has host"), port))
         .await
         .expect("connect success");
 
-    let mut handshake = HandshakeConn::new(&mut stream);
+    let mut handshake = HandshakeConn::new(stream);
     handshake.start_inband_exchange(module, path).await?;
 
-    let (mut generator, mut receiver) = handshake.finalize(&opts.filters).await?;
+    Ok(handshake)
+}
 
-    let file_list = receiver.recv_file_list().await?;
+pub async fn finalize(
+    mut tx: impl AsyncWrite + Unpin,
+    mut rx: impl AsyncRead + Unpin + Send,
+) -> Result<Stats> {
+    let read = rx.read_rsync_long().await?;
+    let written = rx.read_rsync_long().await?;
+    let size = rx.read_rsync_long().await?;
 
-    let io_errors = receiver.read_i32_le().await?;
-    if io_errors != 0 {
-        warn!("server reported IO errors: {}", io_errors);
-    }
+    tx.write_i32_le(BYE).await?;
+    tx.shutdown().await?;
 
-    tokio::try_join!(
-        generator.generate_task(&file_list),
-        receiver.recv_task(&file_list),
-    )?;
-
-    let stats = finalize(&mut *generator, &mut *receiver).await?;
-    info!(?stats, "transfer stats");
-
-    Ok(())
+    Ok(Stats {
+        read,
+        written,
+        size,
+    })
 }

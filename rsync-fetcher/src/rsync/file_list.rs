@@ -1,13 +1,13 @@
 use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use eyre::{bail, Result};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, BufReader};
+use tokio::net::tcp::OwnedReadHalf;
 use tracing::{debug, warn};
 
-use crate::rsync::envelope::RsyncReadExt;
-use crate::rsync::receiver::Receiver;
+use crate::rsync::envelope::{EnvelopeRead, RsyncReadExt};
 
 const XMIT_SAME_MODE: u8 = 1 << 1;
 const XMIT_SAME_NAME: u8 = 1 << 5;
@@ -25,7 +25,8 @@ pub struct FileEntry {
     pub mode: u32,
     // maybe PathBuf?
     pub link_target: Option<Vec<u8>>,
-    pub idx: i32,
+    // int32 in rsync, but it couldn't be negative yes?
+    pub idx: u32,
 }
 
 impl FileEntry {
@@ -53,7 +54,7 @@ impl Debug for FileEntry {
     }
 }
 
-impl<'a> Receiver<'a> {
+impl EnvelopeRead<BufReader<OwnedReadHalf>> {
     pub async fn recv_file_list(&mut self) -> Result<Vec<FileEntry>> {
         let mut list = vec![];
 
@@ -76,7 +77,7 @@ impl<'a> Receiver<'a> {
 
         // Now we mark their idx
         for (idx, entry) in list.iter_mut().enumerate() {
-            entry.idx = i32::try_from(idx).expect("file list too long");
+            entry.idx = u32::try_from(idx).expect("file list too long");
         }
 
         // enveloped_conn.consume_uid_mapping().await?;
@@ -162,16 +163,7 @@ impl<'a> Receiver<'a> {
             modify_time,
             mode,
             link_target,
-            idx: i32::MAX, // to be filled later
+            idx: u32::MAX, // to be filled later
         })
     }
-}
-
-pub fn mod_time_eq(x: SystemTime, y: SystemTime) -> bool {
-    x.duration_since(UNIX_EPOCH)
-        .expect("time before unix epoch")
-        .as_secs()
-        == y.duration_since(UNIX_EPOCH)
-            .expect("time before unix epoch")
-            .as_secs()
 }

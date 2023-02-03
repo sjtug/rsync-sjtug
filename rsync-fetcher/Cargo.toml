@@ -6,6 +6,8 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1"
+aws-config = "0.54"
+aws-sdk-s3 = "0.24"
 bincode = "2.0.0-rc.2"
 blake2 = "0.10"
 clap = { version = "4.1", features = ["derive"] }

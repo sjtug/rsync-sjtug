@@ -1,42 +1,75 @@
 use std::cmp::Ordering;
 use std::io::SeekFrom;
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
+use aws_sdk_s3::types::ByteStream;
 use blake2::Blake2b;
 use digest::consts::U20;
 use digest::Digest;
 use eyre::{ensure, Result};
 use md4::Md4;
-use tempfile::tempfile;
+use redis::aio;
+use tempfile::{tempfile, TempDir};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
-use tokio::net::tcp::ReadHalf;
-use tracing::info;
+use tokio::net::tcp::OwnedReadHalf;
+use tracing::{debug, info, instrument};
 
+use crate::opts::{RedisOpts, S3Opts};
+use crate::plan::{MetaExtra, Metadata};
+use crate::redis_::update_metadata;
 use crate::rsync::checksum::SumHead;
 use crate::rsync::envelope::EnvelopeRead;
 use crate::rsync::file_list::FileEntry;
+use crate::utils::{hash, ToHex};
 
-pub struct Receiver<'a> {
-    rx: EnvelopeRead<BufReader<ReadHalf<'a>>>,
+pub struct Receiver {
+    rx: EnvelopeRead<BufReader<OwnedReadHalf>>,
+    file_list: Arc<Vec<FileEntry>>,
     seed: i32,
+    s3: aws_sdk_s3::Client,
+    s3_opts: S3Opts,
+    basis_dir: TempDir,
+    redis: aio::Connection,
+    redis_opts: RedisOpts,
 }
 
-impl<'a> Receiver<'a> {
-    pub const fn new(rx: EnvelopeRead<BufReader<ReadHalf<'a>>>, seed: i32) -> Self {
-        Self { rx, seed }
+impl Receiver {
+    // We are fine with this because it's a private constructor.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        rx: EnvelopeRead<BufReader<OwnedReadHalf>>,
+        file_list: Arc<Vec<FileEntry>>,
+        seed: i32,
+        s3: aws_sdk_s3::Client,
+        s3_opts: S3Opts,
+        basis_dir: TempDir,
+        redis: aio::Connection,
+        redis_opts: RedisOpts,
+    ) -> Self {
+        Self {
+            rx,
+            file_list,
+            seed,
+            s3,
+            s3_opts,
+            basis_dir,
+            redis,
+            redis_opts,
+        }
     }
 }
 
-impl<'a> Deref for Receiver<'a> {
-    type Target = EnvelopeRead<BufReader<ReadHalf<'a>>>;
+impl Deref for Receiver {
+    type Target = EnvelopeRead<BufReader<OwnedReadHalf>>;
 
     fn deref(&self) -> &Self::Target {
         &self.rx
     }
 }
 
-impl<'a> DerefMut for Receiver<'a> {
+impl DerefMut for Receiver {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.rx
     }
@@ -51,11 +84,11 @@ enum FileToken {
 #[derive(Debug)]
 struct RecvResult {
     target_file: File,
-    hash: [u8; 20],
+    blake2b_hash: [u8; 20],
 }
 
-impl<'a> Receiver<'a> {
-    pub async fn recv_task(&mut self, file_list: &[FileEntry]) -> Result<()> {
+impl Receiver {
+    pub async fn recv_task(&mut self) -> Result<()> {
         let mut phase = 0;
         loop {
             let idx = self.read_i32_le().await?;
@@ -71,29 +104,72 @@ impl<'a> Receiver<'a> {
 
             // Intended sign loss.
             #[allow(clippy::cast_sign_loss)]
-            let entry = &file_list[idx as usize];
-            info!("recv file #{} ({})", idx, entry.name_lossy());
-
-            // TODO s3 impl download file from storage in this step.
-            // let basis_path = opts.dest.join(Path::new(OsStr::from_bytes(&entry.name)));
-            // let basis_file = File::open(&basis_path)
-            //     .await
-            //     .map(|f| Some(f))
-            //     .or_else(|f| {
-            //         if f.kind() == std::io::ErrorKind::NotFound {
-            //             Ok(None)
-            //         } else {
-            //             Err(f)
-            //         }
-            //     })?;
-
-            // let RecvResult{ target_file, hash } = self.recv_data(seed, basis_file).await?;
-
-            // TODO s3 impl upload file to storage in this step.
+            self.recv_file(idx as usize).await?;
         }
 
         info!("recv finish");
         Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn recv_file(&mut self, idx: usize) -> Result<()> {
+        let entry = &self.file_list[idx];
+        debug!(file=%entry.name_lossy(), "receive file");
+
+        // Get basis file if exists. It should be created by generator if delta transfer is
+        // enabled and an old version of the file exists.
+        let basis_file = self.try_get_basis_file(&entry.name).await?;
+
+        // Receive file data.
+        let RecvResult {
+            target_file,
+            blake2b_hash,
+        } = self.recv_data(basis_file).await?;
+
+        let entry = &self.file_list[idx];
+        // Upload file to S3.
+        let body = ByteStream::read_from().file(target_file).build().await?;
+        self.s3
+            .put_object()
+            .bucket(&self.s3_opts.bucket)
+            .key(format!(
+                "{}{:x}",
+                self.s3_opts.prefix,
+                blake2b_hash.as_hex()
+            ))
+            .body(body)
+            .send()
+            .await?;
+
+        // Update metadata in Redis.
+        let metadata = Metadata {
+            len: entry.len,
+            modify_time: entry.modify_time,
+            extra: MetaExtra::Regular { blake2b_hash },
+        };
+        update_metadata(
+            &mut self.redis,
+            &self.redis_opts.namespace,
+            &entry.name,
+            metadata,
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    async fn try_get_basis_file(&self, path: &[u8]) -> Result<Option<File>> {
+        let basis_path = self
+            .basis_dir
+            .path()
+            .join(format!("{:x}", hash(path).as_hex()));
+        Ok(File::open(&basis_path).await.map(Some).or_else(|f| {
+            if f.kind() == std::io::ErrorKind::NotFound {
+                Ok(None)
+            } else {
+                Err(f)
+            }
+        })?)
     }
 
     async fn recv_data(&mut self, mut local_basis: Option<File>) -> Result<RecvResult> {
@@ -104,7 +180,6 @@ impl<'a> Receiver<'a> {
             remainder_len,
         } = SumHead::read_from(&mut **self).await?;
 
-        // TODO security fix: this file should not be accessible to other users.
         let mut target_file = File::from_std(tempfile()?);
 
         // Hasher for final file consistency check.
@@ -164,7 +239,10 @@ impl<'a> Receiver<'a> {
         let hash: [u8; 20] = blake2b_hasher.finalize().into();
 
         target_file.seek(SeekFrom::Start(0)).await?;
-        Ok(RecvResult { target_file, hash })
+        Ok(RecvResult {
+            target_file,
+            blake2b_hash: hash,
+        })
     }
 
     async fn recv_token(&mut self) -> Result<FileToken> {
