@@ -72,27 +72,31 @@ async fn main() -> Result<()> {
         "transfer plan generated."
     );
 
-    // Move stale files in the partial index to the "partial-stale" index.
-    // These files were uploaded to S3 during last partial transfer, but are removed from remote
-    // rsync server.
-    info!("moving outdated files from last partial sync to partial-stale index.");
-    move_index(
-        &mut redis_conn,
-        &format!("{namespace}:partial"),
-        &format!("{namespace}:partial-stale"),
-        &transfer_plan.stale,
-    )
-    .await?;
+    if !transfer_plan.stale.is_empty() {
+        // Move stale files in the partial index to the "partial-stale" index.
+        // These files were uploaded to S3 during last partial transfer, but are removed from remote
+        // rsync server.
+        info!("moving outdated files from last partial sync to partial-stale index.");
+        move_index(
+            &mut redis_conn,
+            &format!("{namespace}:partial"),
+            &format!("{namespace}:partial-stale"),
+            &transfer_plan.stale,
+        )
+            .await?;
+    }
 
-    info!("copying up-to-date files from latest index to partial index.");
-    // These files already exists in the latest index. Copy them to the partial index.
-    copy_index(
-        &mut redis_conn,
-        latest_prefix.as_ref().expect("latest index"),
-        &format!("{namespace}:partial"),
-        &transfer_plan.copy_from_latest,
-    )
-    .await?;
+    if !transfer_plan.copy_from_latest.is_empty() {
+        info!("copying up-to-date files from latest index to partial index.");
+        // These files already exists in the latest index. Copy them to the partial index.
+        copy_index(
+            &mut redis_conn,
+            latest_prefix.as_ref().expect("latest index"),
+            &format!("{namespace}:partial"),
+            &transfer_plan.copy_from_latest,
+        )
+            .await?;
+    }
 
     // Update symlinks. No real files are transferred yet.
     apply_symlinks(
