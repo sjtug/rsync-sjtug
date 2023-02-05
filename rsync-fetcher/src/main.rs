@@ -9,6 +9,10 @@ use std::sync::Arc;
 use clap::Parser;
 use eyre::Result;
 use tracing::info;
+use tracing_error::ErrorLayer;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::EnvFilter;
 
 use crate::opts::{Opts, RedisOpts, RsyncOpts, S3Opts};
 use crate::plan::generate_transfer_plan;
@@ -28,8 +32,12 @@ mod utils;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::Registry::default()
+        .with(EnvFilter::from_default_env())
+        .with(ErrorLayer::default())
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .init();
     color_eyre::install()?;
-    tracing_subscriber::fmt::init();
 
     let opts = Opts::parse();
     let rsync_opts = RsyncOpts::from(&opts);

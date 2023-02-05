@@ -1607,6 +1607,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "tracing-error",
  "tracing-subscriber",
  "unix_mode",
  "url",
