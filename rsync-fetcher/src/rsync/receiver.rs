@@ -3,6 +3,7 @@ use std::io::SeekFrom;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
+use aws_sdk_s3::error::{HeadObjectError, HeadObjectErrorKind};
 use aws_sdk_s3::types::ByteStream;
 use blake2::Blake2b;
 use digest::consts::U20;
@@ -126,37 +127,11 @@ impl Receiver {
             blake2b_hash,
         } = self.recv_data(basis_file).await?;
 
-        let entry = &self.file_list[idx];
-
-        // TODO check if a previous uploaded file is outdated, and add it to partial-stale if it is.
-
         // Upload file to S3.
-        let body = ByteStream::read_from().file(target_file).build().await?;
-        self.s3
-            .put_object()
-            .bucket(&self.s3_opts.bucket)
-            .key(format!(
-                "{}{:x}",
-                self.s3_opts.prefix,
-                blake2b_hash.as_hex()
-            ))
-            .body(body)
-            .send()
-            .await?;
+        self.upload_s3(target_file, &blake2b_hash).await?;
 
         // Update metadata in Redis.
-        let metadata = Metadata {
-            len: entry.len,
-            modify_time: entry.modify_time,
-            extra: MetaExtra::Regular { blake2b_hash },
-        };
-        update_metadata(
-            &mut self.redis,
-            &format!("{}:partial", self.redis_opts.namespace),
-            &entry.name,
-            metadata,
-        )
-        .await?;
+        self.update_metadata(idx, blake2b_hash).await?;
 
         Ok(())
     }
@@ -263,5 +238,82 @@ impl Receiver {
             #[allow(clippy::cast_sign_loss)]
             Ordering::Less => Ok(FileToken::Copied(-(token + 1) as u32)),
         }
+    }
+
+    async fn upload_s3(&mut self, target_file: File, blake2b_hash: &[u8; 20]) -> Result<()> {
+        // File is content addressed by its blake2b hash.
+        let key = format!("{}{:x}", self.s3_opts.prefix, blake2b_hash.as_hex());
+
+        // Check if file already exists. Might happen if the file is the same between two syncs,
+        // or it's hard linked.
+        let exists = self
+            .s3
+            .head_object()
+            .bucket(&self.s3_opts.bucket)
+            .key(&key)
+            .send()
+            .await
+            .map(|_| true)
+            .or_else(|e| match e.into_service_error() {
+                HeadObjectError {
+                    kind: HeadObjectErrorKind::NotFound(_),
+                    ..
+                } => Ok(false),
+                e => Err(e),
+            })?;
+
+        // Only upload if it doesn't exist.
+        if !exists {
+            let body = ByteStream::read_from().file(target_file).build().await?;
+            self.s3
+                .put_object()
+                .bucket(&self.s3_opts.bucket)
+                .key(key)
+                .body(body)
+                .send()
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn update_metadata(&mut self, idx: usize, blake2b_hash: [u8; 20]) -> Result<()> {
+        let entry = &self.file_list[idx];
+        let metadata = Metadata {
+            len: entry.len,
+            modify_time: entry.modify_time,
+            extra: MetaExtra::Regular { blake2b_hash },
+        };
+
+        // Update metadata in Redis.
+        let maybe_old_meta = update_metadata(
+            &mut self.redis,
+            &format!("{}:partial", self.redis_opts.namespace),
+            &entry.name,
+            metadata,
+        )
+        .await?;
+
+        // If a previous version of the file exists, add it to partial-stale.
+        if let Some(Metadata {
+            extra: MetaExtra::Regular {
+                blake2b_hash: old_hash,
+            },
+            ..
+        }) = maybe_old_meta
+        {
+            if old_hash != blake2b_hash {
+                drop(
+                    update_metadata(
+                        &mut self.redis,
+                        &format!("{}:partial-stale", self.redis_opts.namespace),
+                        &entry.name,
+                        maybe_old_meta.expect("checked above"),
+                    )
+                    .await?,
+                );
+            }
+        }
+
+        Ok(())
     }
 }

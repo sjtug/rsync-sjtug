@@ -88,18 +88,20 @@ pub fn acquire_instance_lock(client: &redis::Client, opts: &RedisOpts) -> Result
     Ok(lock)
 }
 
+/// Update metadata of a file, and return the old metadata if any.
 pub async fn update_metadata(
     redis: &mut impl aio::ConnectionLike,
     prefix: &str,
     path: &[u8],
     metadata: Metadata,
-) -> Result<()> {
+) -> Result<Option<Metadata>> {
     let (zset_key, hash_key) = (format!("{prefix}:zset"), format!("{prefix}:hash"));
 
-    let (z_added, h_added): (usize, usize) = redis::pipe()
+    let (old_meta, z_added, h_added): (Option<Metadata>, usize, usize) = redis::pipe()
         .atomic()
-        .zadd(zset_key, path, 0)
-        .hset(hash_key, path, metadata)
+        .hget(&hash_key, path)
+        .zadd(&zset_key, path, 0)
+        .hset(&hash_key, path, metadata)
         .query_async(redis)
         .await?;
 
@@ -107,7 +109,7 @@ pub async fn update_metadata(
     ensure!(z_added == 1, "zadd failed");
     ensure!(h_added == 1, "hset failed");
 
-    Ok(())
+    Ok(old_meta)
 }
 
 /// Commit a completed transfer and put the new index into effect.
