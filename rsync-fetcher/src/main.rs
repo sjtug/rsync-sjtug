@@ -30,6 +30,8 @@ mod rsync;
 mod s3;
 mod set_ops;
 mod symlink;
+#[cfg(test)]
+mod tests;
 mod utils;
 
 #[tokio::main]
