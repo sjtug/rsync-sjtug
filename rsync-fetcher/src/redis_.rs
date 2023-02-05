@@ -93,55 +93,41 @@ pub fn acquire_instance_lock(client: &redis::Client, opts: &RedisOpts) -> Result
 /// Update metadata of a file, and return the old metadata if any.
 pub async fn update_metadata(
     redis: &mut impl aio::ConnectionLike,
-    prefix: &str,
+    index: &str,
     path: &[u8],
     metadata: Metadata,
 ) -> Result<Option<Metadata>> {
-    let (zset_key, hash_key) = (format!("{prefix}:zset"), format!("{prefix}:hash"));
-
-    let (old_meta, z_added, h_added): (Option<Metadata>, usize, usize) = redis::pipe()
+    // TODO rollback
+    let (old_meta, h_added): (Option<Metadata>, usize) = redis::pipe()
         .atomic()
-        .hget(&hash_key, path)
-        .zadd(&zset_key, path, 0)
-        .hset(&hash_key, path, metadata)
+        .hget(index, path)
+        .hset(index, path, metadata)
         .query_async(redis)
         .await?;
 
-    // TODO rollback
-    ensure!(z_added == 1, "zadd failed");
     ensure!(h_added == 1, "hset failed");
 
     Ok(old_meta)
 }
 
 /// Commit a completed transfer and put the new index into effect.
-pub async fn commit_transfer(redis: &mut impl aio::ConnectionLike, namespace: &str) -> Result<()> {
+pub async fn commit_transfer(
+    redis: &mut (impl aio::ConnectionLike + Send),
+    namespace: &str,
+) -> Result<()> {
     info!("commit transfer");
 
-    let (old_zset_key, old_hash_key) = (
-        format!("{namespace}:partial:zset"),
-        format!("{namespace}:partial:hash"),
-    );
+    let old_index = format!("{namespace}:partial");
 
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .expect("system time is before UNIX epoch")
         .as_secs();
-    let (new_zset_key, new_hash_key) = (
-        format!("{namespace}:index:{timestamp}:zset"),
-        format!("{namespace}:index:{timestamp}:hash"),
-    );
+    let new_index = format!("{namespace}:index:{timestamp}");
 
     // TODO rollback
-    let (z_succ, h_succ): (bool, bool) = redis::pipe()
-        .atomic()
-        .rename(old_zset_key, new_zset_key)
-        .rename(old_hash_key, new_hash_key)
-        .query_async(redis)
-        .await?;
-
-    ensure!(z_succ, "zset rename failed");
-    ensure!(h_succ, "hash rename failed");
+    let succ: bool = redis.rename(old_index, new_index).await?;
+    ensure!(succ, "rename failed");
 
     Ok(())
 }
@@ -165,13 +151,13 @@ pub async fn get_latest_index(
 ) -> Result<Option<String>> {
     let keys = async_iter_to_stream(
         redis
-            .scan_match::<_, Vec<u8>>(format!("{namespace}:index:*:zset"))
+            .scan_match::<_, Vec<u8>>(format!("{namespace}:index:*"))
             .await?,
     );
     let filtered = keys
         .try_filter_map(|k| async move { Ok(String::from_utf8(k).ok()) })
         .try_filter_map(|k| async move {
-            Ok(scan_fmt!(&k, &format!("{namespace}:index:{{d}}:zset"), u64).ok())
+            Ok(scan_fmt!(&k, &format!("{namespace}:index:{{d}}"), u64).ok())
         });
 
     let maybe_latest = filtered
@@ -191,7 +177,7 @@ pub async fn copy_index(
     items: &[Vec<u8>],
 ) -> Result<()> {
     for item in items {
-        let entry: Vec<u8> = redis.hget(format!("{from}:hash"), item).await?;
+        let entry: Vec<u8> = redis.hget(from, item).await?;
         ensure!(
             !entry.is_empty(),
             "key or field not found: {}",
@@ -199,15 +185,9 @@ pub async fn copy_index(
         );
 
         // TODO rollback
-        let (z_added, h_added): (usize, usize) = redis::pipe()
-            .atomic()
-            .zadd(format!("{to}:zset"), item, 0)
-            .hset(format!("{to}:hash"), item, entry)
-            .query_async(redis)
-            .await?;
+        let set: usize = redis.hset(to, item, entry).await?;
 
-        ensure!(z_added == 1, "zadd failed");
-        ensure!(h_added == 1, "hset failed");
+        ensure!(set == 1, "set failed");
     }
     Ok(())
 }
@@ -220,7 +200,7 @@ pub async fn move_index(
     items: &[Vec<u8>],
 ) -> Result<()> {
     for item in items {
-        let entry: Vec<u8> = redis.hget(format!("{from}:hash"), item).await?;
+        let entry: Vec<u8> = redis.hget(from, item).await?;
         ensure!(
             !entry.is_empty(),
             "key or field not found: {}",
@@ -228,19 +208,28 @@ pub async fn move_index(
         );
 
         // TODO rollback
-        let (z_removed, h_deleted, z_added, h_added): (usize, usize, usize, usize) = redis::pipe()
+        let (h_deleted, h_added): (usize, usize) = redis::pipe()
             .atomic()
-            .zrem(format!("{from}:zset"), item)
-            .hdel(format!("{from}:hash"), item)
-            .zadd(format!("{to}:zset"), item, 0)
-            .hset(format!("{to}:hash"), item, entry)
+            .hdel(from, item)
+            .hset(to, item, entry)
             .query_async(redis)
             .await?;
 
-        ensure!(z_removed == 1, "zrem failed");
         ensure!(h_deleted == 1, "hdel failed");
-        ensure!(z_added == 1, "zadd failed");
         ensure!(h_added == 1, "hset failed");
     }
     Ok(())
+}
+
+pub async fn get_index(
+    redis: &mut (impl aio::ConnectionLike + Send),
+    key: &str,
+) -> Result<Vec<Vec<u8>>> {
+    let mut filenames: Vec<_> =
+        async_iter_to_stream(redis.hscan::<_, (Vec<u8>, Vec<u8>)>(key).await?)
+            .map_ok(|(k, _)| k)
+            .try_collect()
+            .await?;
+    filenames.sort_unstable();
+    Ok(filenames)
 }

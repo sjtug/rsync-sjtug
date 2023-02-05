@@ -2,10 +2,10 @@ use std::convert::Infallible;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use redis::Connection;
+use redis::{Commands, Connection};
 
 use crate::opts::RedisOpts;
-use crate::plan::{Metadata, MetaExtra, TransferItem};
+use crate::plan::{MetaExtra, Metadata, TransferItem};
 use crate::rsync::file_list::FileEntry;
 
 pub fn generate_random_namespace() -> String {
@@ -19,37 +19,29 @@ pub fn generate_random_namespace() -> String {
 
 pub struct MetadataIndex {
     conn: Connection,
-    prefix: String,
+    key: String,
 }
 
 impl Drop for MetadataIndex {
     fn drop(&mut self) {
-        let prefix = &self.prefix;
-        let _ = redis::pipe()
-            .del(format!("{prefix}:hash"))
-            .del(format!("{prefix}:zset"))
-            .query::<()>(&mut self.conn);
+        let _: () = self.conn.del(&self.key).unwrap();
     }
 }
 
 impl MetadataIndex {
-    pub fn new(client: &redis::Client, prefix: &str, items: &[(String, Metadata)]) -> Self {
+    pub fn new(client: &redis::Client, key: &str, items: &[(String, Metadata)]) -> Self {
         let mut conn = client.get_connection().unwrap();
-
-        let hash_key = format!("{prefix}:hash");
-        let zset_key = format!("{prefix}:zset");
 
         let mut pipe = redis::pipe();
         for (path, metadata) in items {
-            pipe.hset(&hash_key, path, metadata);
-            pipe.zadd(&zset_key, path, 0);
+            pipe.hset(key, path, metadata);
         }
 
         pipe.query::<()>(&mut conn).unwrap();
 
         Self {
             conn,
-            prefix: prefix.to_string(),
+            key: key.to_string(),
         }
     }
 }

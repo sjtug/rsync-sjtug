@@ -62,9 +62,9 @@ async fn main() -> Result<()> {
     let file_list = Arc::new(conn.recv_file_list().await?);
 
     let namespace = &redis_opts.namespace;
-    let latest_prefix = get_latest_index(&mut redis_conn, namespace).await?;
+    let latest_index = get_latest_index(&mut redis_conn, namespace).await?;
     let transfer_plan =
-        generate_transfer_plan(&redis, &file_list, &redis_opts, &latest_prefix).await?;
+        generate_transfer_plan(&redis, &file_list, &redis_opts, &latest_index).await?;
     info!(
         downloads=%transfer_plan.downloads.len(),
         copy_from_latest=%transfer_plan.copy_from_latest.len(),
@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
             &format!("{namespace}:partial-stale"),
             &transfer_plan.stale,
         )
-            .await?;
+        .await?;
     }
 
     if !transfer_plan.copy_from_latest.is_empty() {
@@ -91,11 +91,11 @@ async fn main() -> Result<()> {
         // These files already exists in the latest index. Copy them to the partial index.
         copy_index(
             &mut redis_conn,
-            latest_prefix.as_ref().expect("latest index"),
+            latest_index.as_ref().expect("latest index"),
             &format!("{namespace}:partial"),
             &transfer_plan.copy_from_latest,
         )
-            .await?;
+        .await?;
     }
 
     // Update symlinks. No real files are transferred yet.

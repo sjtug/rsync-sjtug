@@ -45,11 +45,6 @@ Note that there are more than one file index in Redis.
 > Not all files in partial index should be removed. For example, if a file exists both in a stale index and a "live"
 > index, it should not be removed.
 
-For each index, two keys are used to store the metadata:
-
-- `<prefix>:zset` - a sorted set of file paths, lexically sorted.
-- `<prefix>:hash` - a hash of file metadata, keyed by file path.
-
 ## Delta Transfer
 
 rsync-sjtug implements the delta transfer algorithm described in the rsync protocol specification, which can reduce the

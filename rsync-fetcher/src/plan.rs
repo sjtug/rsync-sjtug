@@ -2,20 +2,20 @@
 use std::ops::ControlFlow;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use bincode::{Decode, Encode};
 use bincode::config::Configuration;
+use bincode::{Decode, Encode};
 use either::Either;
 use eyre::Result;
-use futures::{pin_mut, stream, StreamExt, TryStreamExt};
+use futures::{pin_mut, stream, StreamExt};
 use redis::{
     AsyncCommands, Client, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value,
 };
 use tracing::{info, instrument};
 
 use crate::opts::RedisOpts;
-use crate::redis_::async_iter_to_stream;
+use crate::redis_::get_index;
 use crate::rsync::file_list::FileEntry;
-use crate::set_ops::{Case, into_union, with_sorted_iter};
+use crate::set_ops::{into_union, with_sorted_iter, Case};
 
 const BINCODE_CONFIG: Configuration = bincode::config::standard();
 
@@ -48,38 +48,29 @@ pub async fn generate_transfer_plan(
     client: &Client,
     remote: &[FileEntry],
     opts: &RedisOpts,
-    latest_prefix: &Option<String>,
+    latest_index: &Option<String>,
 ) -> Result<TransferPlan> {
     let namespace = &opts.namespace;
 
     let mux_conn = client.get_multiplexed_async_connection().await?;
-    let partial_prefix = format!("{namespace}:partial");
+    let partial_index = format!("{namespace}:partial");
     info!(
-        latest_prefix,
+        latest_index,
         "generating transfer plan: remote Δ (latest + partial)"
     );
 
     let (mut latest_conn, mut partial_conn) = (mux_conn.clone(), mux_conn.clone());
     let (latest_iter, partial_iter) = (
-        if let Some(latest_prefix) = latest_prefix {
+        if let Some(latest_index) = latest_index {
             // If there are index in production, fetch the latest one.
-            async_iter_to_stream(
-                latest_conn
-                    .zscan::<_, (Vec<u8>, usize)>(format!("{latest_prefix}:zset"))
-                    .await?,
-            )
-            .map_ok(|(k, _)| k)
-            .left_stream()
+            stream::iter(get_index(&mut latest_conn, latest_index).await?)
+                .map(Ok)
+                .left_stream()
         } else {
             // Otherwise, we use an empty stream.
             stream::empty().right_stream()
         },
-        async_iter_to_stream(
-            partial_conn
-                .zscan::<_, (Vec<u8>, usize)>(format!("{partial_prefix}:zset"))
-                .await?,
-        )
-        .map_ok(|(k, _)| k),
+        stream::iter(get_index(&mut partial_conn, &partial_index).await?).map(Ok),
     );
     let remote_iter = stream::iter(remote.iter()).map(Ok);
 
@@ -100,17 +91,15 @@ pub async fn generate_transfer_plan(
         |x, y| x.name.cmp(&y.as_ref()),
         |case| {
             let mut mux_conn = mux_conn.clone();
-            let partial_prefix = &partial_prefix;
-            let latest_prefix = latest_prefix.as_ref();
+            let partial_index = &partial_index;
+            let latest_index = latest_index.as_ref();
             async move {
                 Ok(match case {
                     // File only exists on remote, needs to be transferred
-                    Case::Left(remote) => {
-                        ControlFlow::Break(TransferKind::Remote(TransferItem {
-                            idx: remote.idx,
-                            blake2b_hash: None,
-                        }))
-                    }
+                    Case::Left(remote) => ControlFlow::Break(TransferKind::Remote(TransferItem {
+                        idx: remote.idx,
+                        blake2b_hash: None,
+                    })),
                     // File only exists in latest or partial.
                     Case::Right(local) => {
                         let in_partial = matches!(local, Either::Left(_));
@@ -127,13 +116,12 @@ pub async fn generate_transfer_plan(
                         let in_partial = matches!(local, Either::Left(_));
                         let name = local.into_inner();
 
-                        let prefix = if in_partial {
-                            partial_prefix
+                        let index = if in_partial {
+                            partial_index
                         } else {
-                            latest_prefix.as_ref().expect("right is latest index")
+                            latest_index.as_ref().expect("right is latest index")
                         };
-                        let metadata: Metadata =
-                            mux_conn.hget(format!("{prefix}:hash"), &name).await?;
+                        let metadata: Metadata = mux_conn.hget(index, &name).await?;
                         if remote.len == metadata.len
                             && mod_time_eq(remote.modify_time, metadata.modify_time)
                         {
@@ -271,15 +259,15 @@ mod tests {
         let client = redis_client();
         let namespace = generate_random_namespace();
 
-        let latest_prefix = format!("{namespace}:latest");
+        let latest_index = format!("{namespace}:latest");
         let _partial_guard = MetadataIndex::new(&client, &format!("{namespace}:partial"), partial);
-        let _latest_guard = MetadataIndex::new(&client, &latest_prefix, latest);
+        let _latest_guard = MetadataIndex::new(&client, &latest_index, latest);
 
         let plan = generate_transfer_plan(
             &client,
             remote,
             &namespace.parse().unwrap(),
-            &use_latest.then_some(latest_prefix),
+            &use_latest.then_some(latest_index),
         )
         .await
         .unwrap();
