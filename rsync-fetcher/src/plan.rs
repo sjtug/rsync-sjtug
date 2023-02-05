@@ -6,7 +6,7 @@ use bincode::config::Configuration;
 use bincode::{Decode, Encode};
 use either::Either;
 use eyre::Result;
-use futures::{pin_mut, stream, StreamExt};
+use futures::{pin_mut, stream, StreamExt, TryStreamExt};
 use redis::{
     AsyncCommands, Client, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value,
 };
@@ -64,9 +64,10 @@ pub async fn generate_transfer_plan(
             // If there are index in production, fetch the latest one.
             async_iter_to_stream(
                 latest_conn
-                    .zscan::<_, Vec<u8>>(format!("{latest_prefix}:zset"))
+                    .zscan::<_, (Vec<u8>, usize)>(format!("{latest_prefix}:zset"))
                     .await?,
             )
+            .map_ok(|(k, _)| k)
             .left_stream()
         } else {
             // Otherwise, we use an empty stream.
@@ -74,9 +75,10 @@ pub async fn generate_transfer_plan(
         },
         async_iter_to_stream(
             partial_conn
-                .zscan::<_, Vec<u8>>(format!("{partial_prefix}:zset"))
+                .zscan::<_, (Vec<u8>, usize)>(format!("{partial_prefix}:zset"))
                 .await?,
-        ),
+        )
+        .map_ok(|(k, _)| k),
     );
     let remote_iter = stream::iter(remote.iter()).map(Ok);
 
