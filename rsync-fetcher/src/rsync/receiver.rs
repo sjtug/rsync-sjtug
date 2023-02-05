@@ -152,7 +152,7 @@ impl Receiver {
         };
         update_metadata(
             &mut self.redis,
-            &self.redis_opts.namespace,
+            &format!("{}:partial", self.redis_opts.namespace),
             &entry.name,
             metadata,
         )

@@ -24,7 +24,13 @@ pub async fn apply_symlinks(
                     target: link_target.clone(),
                 },
             };
-            update_metadata(redis, &opts.namespace, &entry.name, metadata).await?;
+            update_metadata(
+                redis,
+                &format!("{}:partial", opts.namespace),
+                &entry.name,
+                metadata,
+            )
+            .await?;
         }
     }
     Ok(())
