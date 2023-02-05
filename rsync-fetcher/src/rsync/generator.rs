@@ -97,7 +97,7 @@ impl Generator {
 
         if let Some(blake2b_hash) = &item.blake2b_hash {
             // We have a basis file. Use it to initiate a delta transfer
-            info!(?path, idx, "requesting partial file");
+            debug!(?path, idx, "requesting partial file");
 
             debug!(?path, hash=%format!("{:x}", blake2b_hash.as_hex()), "download basis file");
             let basis_file = self.download_basis_file(blake2b_hash, &entry.name).await?;
@@ -105,7 +105,7 @@ impl Generator {
             self.write_u32_le(idx).await?;
             self.generate_and_send_sums(basis_file).await?;
         } else {
-            info!(?path, idx, "requesting full file");
+            debug!(?path, idx, "requesting full file");
 
             self.write_u32_le(idx).await?;
             SumHead::default().write_to(&mut **self).await?;

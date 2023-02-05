@@ -210,7 +210,7 @@ impl Receiver {
         // A debug log anyway.
         #[allow(clippy::cast_precision_loss)]
         let (transferred, total) = (transferred as f64, (transferred + copied) as f64);
-        info!(ratio = transferred / total, "transfer ratio");
+        debug!(ratio = transferred / total, "transfer ratio");
 
         // No need to set perms because we'll upload it to s3.
 
