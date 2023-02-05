@@ -6,13 +6,14 @@ use bincode::config::Configuration;
 use bincode::{Decode, Encode};
 use either::Either;
 use eyre::Result;
-use futures::{pin_mut, stream, Stream, StreamExt, TryStreamExt};
+use futures::{pin_mut, stream, StreamExt, TryStreamExt};
 use redis::{
-    AsyncCommands, AsyncIter, Client, FromRedisValue, RedisError, RedisResult, RedisWrite,
-    ToRedisArgs, Value,
+    AsyncCommands, Client, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value,
 };
+use tracing::{info, instrument};
 
 use crate::opts::RedisOpts;
+use crate::redis_::{async_iter_to_stream, get_latest_index};
 use crate::rsync::file_list::FileEntry;
 use crate::set_ops::{into_union, with_sorted_iter, Case};
 
@@ -23,18 +24,7 @@ pub struct TransferItem {
     pub blake2b_hash: Option<[u8; 20]>,
 }
 
-fn async_iter_to_stream<T: FromRedisValue + Unpin>(
-    it: AsyncIter<T>,
-) -> impl Stream<Item = Result<T>> + '_ {
-    stream::unfold(it, |mut it| async move {
-        it.next_item()
-            .await
-            .map_err(eyre::Error::from)
-            .transpose()
-            .map(|i| (i, it))
-    })
-}
-
+#[instrument(skip_all)]
 pub async fn generate_transfer_plan(
     client: &Client,
     remote: &[FileEntry],
@@ -42,17 +32,31 @@ pub async fn generate_transfer_plan(
 ) -> Result<Vec<TransferItem>> {
     let namespace = &opts.namespace;
 
-    let mux_conn = client.get_multiplexed_async_connection().await?;
+    let mut mux_conn = client.get_multiplexed_async_connection().await?;
+    let latest_prefix = get_latest_index(&mut mux_conn, namespace).await?;
+    let partial_prefix = format!("{namespace}:partial");
+    info!(
+        latest_prefix,
+        "generating transfer plan: remote Δ (latest + partial)"
+    );
+
     let (mut latest_conn, mut partial_conn) = (mux_conn.clone(), mux_conn.clone());
     let (latest_iter, partial_iter) = (
-        async_iter_to_stream(
-            latest_conn
-                .zscan::<_, Vec<u8>>(format!("{namespace}:latest:zset"))
-                .await?,
-        ),
+        if let Some(latest_prefix) = &latest_prefix {
+            // If there are index in production, fetch the latest one.
+            async_iter_to_stream(
+                latest_conn
+                    .zscan::<_, Vec<u8>>(format!("{latest_prefix}:zset"))
+                    .await?,
+            )
+            .left_stream()
+        } else {
+            // Otherwise, we use an empty stream.
+            stream::empty().right_stream()
+        },
         async_iter_to_stream(
             partial_conn
-                .zscan::<_, Vec<u8>>(format!("{namespace}:partial:zset"))
+                .zscan::<_, Vec<u8>>(format!("{partial_prefix}:zset"))
                 .await?,
         ),
     );
@@ -60,7 +64,7 @@ pub async fn generate_transfer_plan(
 
     pin_mut!(latest_iter, partial_iter);
 
-    // local = latest + partial
+    // local = latest (if any) + partial
     let local = into_union(partial_iter, latest_iter, Ord::cmp);
     pin_mut!(local);
 
@@ -74,6 +78,8 @@ pub async fn generate_transfer_plan(
         |x, y| x.name.cmp(&y.as_ref()),
         |case| {
             let mut mux_conn = mux_conn.clone();
+            let partial_prefix = &partial_prefix;
+            let latest_prefix = latest_prefix.as_ref();
             async move {
                 Ok(match case {
                     // File only exists on remote, needs to be transferred
@@ -85,13 +91,13 @@ pub async fn generate_transfer_plan(
                     Case::Right(_) => ControlFlow::Continue(()),
                     // File exists on both, check if it's the same
                     Case::Both(remote, local) => {
-                        let local_loc = if matches!(local, Either::Left(_)) {
-                            "partial"
+                        let prefix = if matches!(local, Either::Left(_)) {
+                            partial_prefix
                         } else {
-                            "latest"
+                            latest_prefix.as_ref().expect("right is latest index")
                         };
                         let metadata: Metadata = mux_conn
-                            .hget(format!("{namespace}:{local_loc}:hash"), local.into_inner())
+                            .hget(format!("{prefix}:hash"), local.into_inner())
                             .await?;
                         if remote.len == metadata.len
                             && mod_time_eq(remote.modify_time, metadata.modify_time)

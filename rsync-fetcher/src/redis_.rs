@@ -2,7 +2,9 @@ use std::time::SystemTime;
 
 use eyre::Result;
 use eyre::{bail, ensure};
-use redis::{aio, Commands, Script};
+use futures::{stream, Stream, TryStreamExt};
+use redis::{aio, AsyncCommands, AsyncIter, Commands, FromRedisValue, Script};
+use scan_fmt::scan_fmt;
 use tracing::{error, info, warn};
 
 use crate::opts::RedisOpts;
@@ -142,4 +144,41 @@ pub async fn commit_transfer(redis: &mut impl aio::ConnectionLike, namespace: &s
     ensure!(h_succ, "hash rename failed");
 
     Ok(())
+}
+
+pub fn async_iter_to_stream<T: FromRedisValue + Unpin>(
+    it: AsyncIter<T>,
+) -> impl Stream<Item = Result<T>> + '_ {
+    stream::unfold(it, |mut it| async move {
+        it.next_item()
+            .await
+            .map_err(eyre::Error::from)
+            .transpose()
+            .map(|i| (i, it))
+    })
+}
+
+/// Get the latest production index.
+pub async fn get_latest_index(
+    redis: &mut (impl aio::ConnectionLike + Send),
+    namespace: &str,
+) -> Result<Option<String>> {
+    let keys = async_iter_to_stream(
+        redis
+            .scan_match::<_, Vec<u8>>(format!("{namespace}:index:*:zset"))
+            .await?,
+    );
+    let filtered = keys
+        .try_filter_map(|k| async move { Ok(String::from_utf8(k).ok()) })
+        .try_filter_map(|k| async move {
+            Ok(scan_fmt!(&k, &format!("{namespace}:index:{{d}}:zset"), u64).ok())
+        });
+
+    let maybe_latest = filtered
+        .try_fold(None, |acc, x| async move {
+            acc.map_or(Ok(Some(x)), |acc: u64| Ok(Some(acc.max(x))))
+        })
+        .await?;
+
+    Ok(maybe_latest.map(|x| format!("{namespace}:index:{x}")))
 }
