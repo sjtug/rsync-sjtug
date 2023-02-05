@@ -5,7 +5,7 @@ use eyre::{bail, ensure};
 use futures::{stream, Stream, TryStreamExt};
 use redis::{aio, AsyncCommands, AsyncIter, Commands, FromRedisValue, Script};
 use scan_fmt::scan_fmt;
-use tracing::{error, info, warn};
+use tracing::{error, info, instrument, warn};
 
 use crate::opts::RedisOpts;
 use crate::plan::Metadata;
@@ -132,6 +132,7 @@ pub async fn commit_transfer(redis: &mut impl aio::ConnectionLike, namespace: &s
         format!("{namespace}:index:{timestamp}:hash"),
     );
 
+    // TODO rollback
     let (z_succ, h_succ): (bool, bool) = redis::pipe()
         .atomic()
         .rename(old_zset_key, new_zset_key)
@@ -139,7 +140,6 @@ pub async fn commit_transfer(redis: &mut impl aio::ConnectionLike, namespace: &s
         .query_async(redis)
         .await?;
 
-    // TODO rollback
     ensure!(z_succ, "zset rename failed");
     ensure!(h_succ, "hash rename failed");
 
@@ -181,4 +181,66 @@ pub async fn get_latest_index(
         .await?;
 
     Ok(maybe_latest.map(|x| format!("{namespace}:index:{x}")))
+}
+
+#[instrument(skip(redis, items))]
+pub async fn copy_index(
+    redis: &mut (impl aio::ConnectionLike + Send),
+    from: &str,
+    to: &str,
+    items: &[Vec<u8>],
+) -> Result<()> {
+    for item in items {
+        let entry: Vec<u8> = redis.hget(format!("{from}:hash"), item).await?;
+        ensure!(
+            !entry.is_empty(),
+            "key or field not found: {}",
+            String::from_utf8_lossy(item)
+        );
+
+        // TODO rollback
+        let (z_added, h_added): (usize, usize) = redis::pipe()
+            .atomic()
+            .zadd(format!("{to}:zset"), item, 0)
+            .hset(format!("{to}:hash"), item, entry)
+            .query_async(redis)
+            .await?;
+
+        ensure!(z_added == 1, "zadd failed");
+        ensure!(h_added == 1, "hset failed");
+    }
+    Ok(())
+}
+
+#[instrument(skip(redis, items))]
+pub async fn move_index(
+    redis: &mut (impl aio::ConnectionLike + Send),
+    from: &str,
+    to: &str,
+    items: &[Vec<u8>],
+) -> Result<()> {
+    for item in items {
+        let entry: Vec<u8> = redis.hget(format!("{from}:hash"), item).await?;
+        ensure!(
+            !entry.is_empty(),
+            "key or field not found: {}",
+            String::from_utf8_lossy(item)
+        );
+
+        // TODO rollback
+        let (z_removed, h_deleted, z_added, h_added): (usize, usize, usize, usize) = redis::pipe()
+            .atomic()
+            .zrem(format!("{from}:zset"), item)
+            .hdel(format!("{from}:hash"), item)
+            .zadd(format!("{to}:zset"), item, 0)
+            .hset(format!("{to}:hash"), item, entry)
+            .query_async(redis)
+            .await?;
+
+        ensure!(z_removed == 1, "zrem failed");
+        ensure!(h_deleted == 1, "hdel failed");
+        ensure!(z_added == 1, "zadd failed");
+        ensure!(h_added == 1, "hset failed");
+    }
+    Ok(())
 }

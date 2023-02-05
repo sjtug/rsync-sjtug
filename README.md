@@ -42,6 +42,9 @@ Note that there are more than one file index in Redis.
   already outdated. It's ready to be garbage collected.
 - `<namespace>:stale:<timestamp>` - an index that is taken out of production, and is ready to be garbage collected.
 
+> Not all files in partial index should be removed. For example, if a file exists both in a stale index and a "live"
+> index, it should not be removed.
+
 For each index, two keys are used to store the metadata:
 
 - `<prefix>:zset` - a sorted set of file paths, lexically sorted.
