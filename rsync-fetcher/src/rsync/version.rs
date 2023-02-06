@@ -3,7 +3,7 @@ use std::fmt::Display;
 use eyre::{eyre, Context, Result};
 use scan_fmt::scan_fmt;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tracing::info;
+use tracing::debug;
 
 /// The version of the rsync protocol that is supported by this implementation.
 pub const SUPPORTED_VERSION: Version = Version {
@@ -32,7 +32,7 @@ impl Version {
     pub async fn read_from(mut rx: impl AsyncBufRead + Unpin) -> Result<Self> {
         let mut greeting = String::new();
         (&mut rx).take(128).read_line(&mut greeting).await?;
-        info!(greeting, "greeting");
+        debug!(greeting, "greeting");
 
         let protocol_header = greeting
             .trim()

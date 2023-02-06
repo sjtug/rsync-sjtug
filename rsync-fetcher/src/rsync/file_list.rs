@@ -1,11 +1,12 @@
 use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use eyre::{bail, Result};
+use indicatif::ProgressBar;
 use tokio::io::{AsyncReadExt, BufReader};
 use tokio::net::tcp::OwnedReadHalf;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::rsync::envelope::{EnvelopeRead, RsyncReadExt};
 
@@ -58,6 +59,8 @@ impl EnvelopeRead<BufReader<OwnedReadHalf>> {
     pub async fn recv_file_list(&mut self) -> Result<Vec<FileEntry>> {
         let mut list = vec![];
 
+        let spinner = ProgressBar::new_spinner();
+        spinner.enable_steady_tick(Duration::from_millis(50));
         let mut name_scratch = Vec::new();
         loop {
             let b = self.read_u8().await?;
@@ -70,10 +73,16 @@ impl EnvelopeRead<BufReader<OwnedReadHalf>> {
                 .await?;
             debug!(?entry, "recv file entry");
             list.push(entry);
+            if list.len() % 100 == 0 {
+                spinner.set_message(format!("{} files", list.len()));
+            }
         }
+        spinner.finish_and_clear();
 
         list.sort_unstable_by(|x, y| x.name.cmp(&y.name));
         list.dedup_by(|x, y| x.name == y.name);
+
+        info!("{} files", list.len());
 
         // Now we mark their idx
         for (idx, entry) in list.iter_mut().enumerate() {

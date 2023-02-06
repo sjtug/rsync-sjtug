@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use eyre::Result;
+use indicatif::ProgressBar;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 use tokio::net::tcp::OwnedWriteHalf;
@@ -64,12 +65,18 @@ impl DerefMut for Generator {
 }
 
 impl Generator {
-    pub async fn generate_task(&mut self, transfer_plan: &[TransferItem]) -> Result<()> {
-        for entry in transfer_plan {
-            self.recv_generator(entry).await?;
-        }
+    pub async fn generate_task(
+        &mut self,
+        transfer_plan: &[TransferItem],
+        pb: ProgressBar,
+    ) -> Result<()> {
+        info!("generator started.");
 
         info!("generate file phase 1");
+        for entry in transfer_plan {
+            self.recv_generator(entry, &pb).await?;
+        }
+
         self.write_i32_le(-1).await?;
 
         // TODO phase 2: re-do failed files
@@ -79,7 +86,7 @@ impl Generator {
         info!("generator finish");
         Ok(())
     }
-    async fn recv_generator(&mut self, item: &TransferItem) -> Result<()> {
+    async fn recv_generator(&mut self, item: &TransferItem, pb: &ProgressBar) -> Result<()> {
         let entry = &self.file_list[item.idx as usize];
         let idx = entry.idx;
         let path = Path::new(OsStr::from_bytes(&entry.name));
@@ -95,6 +102,7 @@ impl Generator {
             return Ok(());
         }
 
+        pb.inc_length(entry.len);
         if let Some(blake2b_hash) = &item.blake2b_hash {
             // We have a basis file. Use it to initiate a delta transfer
             debug!(?path, idx, "requesting partial file");

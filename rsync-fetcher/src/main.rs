@@ -5,9 +5,11 @@
 )]
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use clap::Parser;
 use eyre::Result;
+use indicatif::{ProgressBar, ProgressStyle};
 use tracing::info;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
@@ -59,8 +61,10 @@ async fn main() -> Result<()> {
     let handshake = start_handshake(&opts.src).await?;
     let mut conn = handshake.finalize(&rsync_opts.filters).await?;
 
+    info!("fetching file list from rsync server.");
     let file_list = Arc::new(conn.recv_file_list().await?);
 
+    info!("generating transfer plan.");
     let namespace = &redis_opts.namespace;
     let latest_index = get_latest_index(&mut redis_conn, namespace).await?;
     let transfer_plan =
@@ -108,12 +112,24 @@ async fn main() -> Result<()> {
     .await?;
 
     // Start the transfer. The transfer model is basically the same as the original rsync impl.
+    let pb = ProgressBar::new(0);
+    pb.set_style(
+        ProgressStyle::with_template(
+            "[{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
+        )
+            .unwrap()
+            .progress_chars("#>-"),
+    );
+    pb.enable_steady_tick(Duration::from_millis(500));
+
     let (mut generator, mut receiver) =
         conn.into_gen_recv(s3, s3_opts, redis_conn, redis_opts, file_list)?;
     tokio::try_join!(
-        generator.generate_task(&transfer_plan.downloads),
-        receiver.recv_task(),
+        generator.generate_task(&transfer_plan.downloads, pb.clone()),
+        receiver.recv_task(pb.clone()),
     )?;
+
+    pb.finish_and_clear();
 
     info!("committing transfer.");
     // Commit the transfer.

@@ -5,7 +5,7 @@ use eyre::{bail, ensure};
 use futures::{stream, Stream, TryStreamExt};
 use redis::{aio, AsyncCommands, AsyncIter, Commands, FromRedisValue, Script};
 use scan_fmt::scan_fmt;
-use tracing::{error, info, instrument, warn};
+use tracing::{error, instrument, warn};
 
 use crate::opts::RedisOpts;
 use crate::plan::Metadata;
@@ -115,8 +115,6 @@ pub async fn commit_transfer(
     redis: &mut (impl aio::ConnectionLike + Send),
     namespace: &str,
 ) -> Result<()> {
-    info!("commit transfer");
-
     let old_index = format!("{namespace}:partial");
 
     let timestamp = SystemTime::now()

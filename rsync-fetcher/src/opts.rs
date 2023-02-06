@@ -5,6 +5,8 @@ use url::Url;
 
 use crate::rsync::filter::Rule;
 
+const LOCK_TIMEOUT: u64 = 3 * 60;
+
 #[derive(Parser)]
 pub struct Opts {
     /// Rsync remote url.
@@ -71,6 +73,7 @@ impl From<&Opts> for S3Opts {
 pub struct RedisOpts {
     pub namespace: String,
     pub force_break: bool,
+    pub lock_ttl: u64,
 }
 
 impl From<&Opts> for RedisOpts {
@@ -78,6 +81,7 @@ impl From<&Opts> for RedisOpts {
         Self {
             namespace: opts.redis_namespace.clone(),
             force_break: opts.force_break,
+            lock_ttl: LOCK_TIMEOUT,
         }
     }
 }

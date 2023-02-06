@@ -9,6 +9,7 @@ use blake2::Blake2b;
 use digest::consts::U20;
 use digest::Digest;
 use eyre::{ensure, Result};
+use indicatif::ProgressBar;
 use md4::Md4;
 use redis::aio;
 use tempfile::{tempfile, TempDir};
@@ -89,7 +90,8 @@ struct RecvResult {
 }
 
 impl Receiver {
-    pub async fn recv_task(&mut self) -> Result<()> {
+    pub async fn recv_task(&mut self, pb: ProgressBar) -> Result<()> {
+        info!("receiver started.");
         let mut phase = 0;
         loop {
             let idx = self.read_i32_le().await?;
@@ -105,7 +107,11 @@ impl Receiver {
 
             // Intended sign loss.
             #[allow(clippy::cast_sign_loss)]
-            self.recv_file(idx as usize).await?;
+            let idx = idx as usize;
+            self.recv_file(idx).await?;
+
+            let entry = &self.file_list[idx];
+            pb.inc(entry.len);
         }
 
         info!("recv finish");
