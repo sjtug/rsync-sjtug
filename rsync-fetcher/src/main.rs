@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
     let redis = redis::Client::open(opts.redis)?;
     let mut redis_conn = redis.get_async_connection().await?;
 
-    let _lock = acquire_instance_lock(&redis, &redis_opts)?;
+    let _lock = acquire_instance_lock(&redis, &redis_opts).await?;
 
     let s3 = create_s3_client(&s3_opts).await;
 

@@ -1,10 +1,12 @@
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use eyre::Result;
 use eyre::{bail, ensure};
 use futures::{stream, Stream, TryStreamExt};
-use redis::{aio, AsyncCommands, AsyncIter, Commands, FromRedisValue, Script};
+use redis::{aio, AsyncCommands, AsyncIter, Client, Commands, FromRedisValue, Script};
 use scan_fmt::scan_fmt;
+use tokio::task::JoinHandle;
+use tokio::time;
 use tracing::{error, instrument, warn};
 
 use crate::opts::RedisOpts;
@@ -16,27 +18,71 @@ pub struct RedisLock {
     conn: redis::Connection,
     namespace: String,
     token: u64,
+    refresh_handle: JoinHandle<()>,
 }
 
 impl RedisLock {
     /// Acquire a lock.
-    pub fn new(mut conn: redis::Connection, opts: &RedisOpts) -> Result<Self> {
+    pub async fn new(client: &Client, opts: &RedisOpts) -> Result<Self> {
         let namespace = opts.namespace.clone();
         let token = rand::random();
 
+        let mut conn = client.get_async_connection().await?;
         if !redis::cmd("SET")
             .arg(format!("{namespace}:lock"))
             .arg(token)
             .arg("NX")
-            .query::<bool>(&mut conn)?
+            .arg("EX")
+            .arg(opts.lock_ttl)
+            .query_async::<_, bool>(&mut conn)
+            .await?
         {
             bail!("Failed to acquire lock. Another process is running?");
         }
 
+        let refresh_handle = tokio::spawn({
+            let namespace = namespace.clone();
+            let lock_ttl = opts.lock_ttl;
+            let mut interval = time::interval(Duration::from_secs(lock_ttl) / 4);
+            async move {
+                loop {
+                    interval.tick().await;
+                    match Script::new(
+                        r#"
+                        if redis.call("GET", KEYS[1]) == ARGV[1] then
+                            return redis.call("SET", KEYS[1], ARGV[1], "EX", ARGV[2])
+                        else
+                            return 0
+                        end
+                    "#,
+                    )
+                    .key(format!("{namespace}:lock"))
+                    .arg(token)
+                    .arg(lock_ttl)
+                    .invoke_async::<_, bool>(&mut conn)
+                    .await
+                    {
+                        Err(e) => {
+                            error!(?e, "failed to renew lock");
+                        }
+                        Ok(false) => {
+                            error!(
+                                "failed to renew lock, lock token mismatch. \
+                                another process acquired the lock?"
+                            );
+                            break;
+                        }
+                        Ok(true) => {}
+                    }
+                }
+            }
+        });
+
         Ok(Self {
-            conn,
+            conn: client.get_connection()?,
             namespace,
             token,
+            refresh_handle,
         })
     }
     /// Force break an existing lock.
@@ -48,6 +94,7 @@ impl RedisLock {
 
 impl Drop for RedisLock {
     fn drop(&mut self) {
+        self.refresh_handle.abort();
         match Script::new(
             r#"
             if redis.call("GET", KEYS[1]) == ARGV[1] then
@@ -71,9 +118,9 @@ impl Drop for RedisLock {
 }
 
 /// Helper function to acquire a lock.
-pub fn acquire_instance_lock(client: &redis::Client, opts: &RedisOpts) -> Result<RedisLock> {
+pub async fn acquire_instance_lock(client: &Client, opts: &RedisOpts) -> Result<RedisLock> {
     let lock = loop {
-        break match RedisLock::new(client.get_connection()?, opts) {
+        break match RedisLock::new(client, opts).await {
             Ok(lock) => lock,
             Err(e) => {
                 if opts.force_break {
