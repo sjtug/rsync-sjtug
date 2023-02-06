@@ -1,4 +1,4 @@
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use eyre::Result;
 use eyre::{bail, ensure};
@@ -161,13 +161,9 @@ pub async fn update_metadata(
 pub async fn commit_transfer(
     redis: &mut (impl aio::ConnectionLike + Send),
     namespace: &str,
+    timestamp: u64,
 ) -> Result<()> {
     let old_index = format!("{namespace}:partial");
-
-    let timestamp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .expect("system time is before UNIX epoch")
-        .as_secs();
     let new_index = format!("{namespace}:index:{timestamp}");
 
     // TODO rollback

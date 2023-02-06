@@ -22,7 +22,8 @@ redis instead of to a filesystem.
 3. Calculate the delta between the remote file list and the local index, which is
    the union of current production index and last partial index (if any).
 4. Start generator and receiver task.
-5. After both tasks completed, commit the partial index to production.
+5. After both tasks completed, generate file listing and upload to S3.
+6. Commit the partial index to production.
 
 Generator task:
 

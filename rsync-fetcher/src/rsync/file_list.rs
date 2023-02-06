@@ -141,7 +141,7 @@ impl EnvelopeRead<BufReader<OwnedReadHalf>> {
             // To avoid Y2038 problem, newer versions of rsync daemon treat mtime as u32 when
             // speaking protocol version 27.
             let secs = self.read_u32_le().await?;
-            SystemTime::UNIX_EPOCH + std::time::Duration::new(u64::from(secs), 0)
+            SystemTime::UNIX_EPOCH + Duration::new(u64::from(secs), 0)
         };
 
         let mode = if same_mode {

@@ -8,6 +8,11 @@ use crate::opts::RedisOpts;
 use crate::plan::{MetaExtra, Metadata, TransferItem};
 use crate::rsync::file_list::FileEntry;
 
+pub fn redis_client() -> redis::Client {
+    // TODO specify redis client
+    redis::Client::open("redis://localhost").unwrap()
+}
+
 pub fn generate_random_namespace() -> String {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -65,6 +70,17 @@ impl Metadata {
     }
 }
 
+impl MetaExtra {
+    pub const fn regular(hash: [u8; 20]) -> Self {
+        Self::Regular { blake2b_hash: hash }
+    }
+    pub fn symlink(target: &str) -> Self {
+        Self::Symlink {
+            target: target.as_bytes().into(),
+        }
+    }
+}
+
 impl FileEntry {
     pub fn regular(name: String, len: u64, modify_time: SystemTime, idx: u32) -> Self {
         Self {
@@ -85,6 +101,7 @@ impl FromStr for RedisOpts {
         Ok(Self {
             namespace: s.to_string(),
             force_break: false,
+            lock_ttl: 5,
         })
     }
 }

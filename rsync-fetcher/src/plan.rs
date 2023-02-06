@@ -240,12 +240,7 @@ mod tests {
 
     use crate::plan::{generate_transfer_plan, Metadata, TransferItem};
     use crate::rsync::file_list::FileEntry;
-    use crate::tests::{generate_random_namespace, MetadataIndex};
-
-    fn redis_client() -> redis::Client {
-        // TODO specify redis client
-        redis::Client::open("redis://localhost").unwrap()
-    }
+    use crate::tests::{generate_random_namespace, redis_client, MetadataIndex};
 
     async fn assert_plan(
         remote: &[FileEntry],

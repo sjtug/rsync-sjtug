@@ -16,6 +16,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
+use crate::index::generate_index_and_upload;
 use crate::opts::{Opts, RedisOpts, RsyncOpts, S3Opts};
 use crate::plan::generate_transfer_plan;
 use crate::redis_::{
@@ -24,7 +25,9 @@ use crate::redis_::{
 use crate::rsync::{finalize, start_handshake};
 use crate::s3::create_s3_client;
 use crate::symlink::apply_symlinks;
+use crate::utils::timestamp;
 
+mod index;
 mod opts;
 mod plan;
 mod redis_;
@@ -122,8 +125,13 @@ async fn main() -> Result<()> {
     );
     pb.enable_steady_tick(Duration::from_millis(500));
 
-    let (mut generator, mut receiver) =
-        conn.into_gen_recv(s3, s3_opts, redis_conn, redis_opts, file_list)?;
+    let (mut generator, mut receiver) = conn.into_gen_recv(
+        s3.clone(),
+        s3_opts.clone(),
+        redis_conn,
+        redis_opts,
+        file_list,
+    )?;
     tokio::try_join!(
         generator.generate_task(&transfer_plan.downloads, pb.clone()),
         receiver.recv_task(pb.clone()),
@@ -131,9 +139,26 @@ async fn main() -> Result<()> {
 
     pb.finish_and_clear();
 
+    let timestamp = timestamp();
+
+    info!("generating listings.");
+    generate_index_and_upload(
+        &redis,
+        &redis_namespace,
+        &s3,
+        &s3_opts,
+        &opts.repository,
+        timestamp,
+    )
+    .await?;
+
     info!("committing transfer.");
-    // Commit the transfer.
-    commit_transfer(&mut redis.get_async_connection().await?, &redis_namespace).await?;
+    commit_transfer(
+        &mut redis.get_async_connection().await?,
+        &redis_namespace,
+        timestamp,
+    )
+    .await?;
 
     // Finalize rsync connection.
     let stats = finalize(&mut *generator, &mut *receiver).await?;

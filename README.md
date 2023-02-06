@@ -27,7 +27,9 @@ File data and their metadata are stored separately.
 
 ### Data
 
-Files are stored in S3 storage, named by their blake2b-160 hash.
+Files are stored in S3 storage, named by their blake2b-160 hash (`<namespace/<hash>`).
+
+Listing html pages are stored in `<namespace>/listing-<timestamp>/<path>/index.html`.
 
 ### Metadata
 

@@ -36,6 +36,10 @@ pub struct Opts {
     /// Only use this if you are sure there's no other fetch process running on the same namespace.
     #[clap(long)]
     pub force_break: bool,
+    /// Repository name.
+    /// This name is used to identify the repository in listing files.
+    #[clap(long)]
+    pub repository: String,
     /// Exclude files matching given pattern.
     #[clap(long, action = ArgAction::Append)]
     pub exclude: Vec<OsString>,
