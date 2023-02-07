@@ -1,7 +1,8 @@
 #![allow(
     clippy::module_name_repetitions,
     clippy::default_trait_access,
-    clippy::future_not_send
+    clippy::future_not_send,
+    clippy::too_many_lines
 )]
 
 use std::sync::Arc;
@@ -11,17 +12,15 @@ use clap::Parser;
 use eyre::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use tracing::info;
-use tracing_error::ErrorLayer;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
+
+use rsync_core::redis_::{
+    acquire_instance_lock, commit_transfer, copy_index, get_latest_index, move_index,
+};
+use rsync_core::utils::init_logger;
 
 use crate::index::generate_index_and_upload;
 use crate::opts::{Opts, RedisOpts, RsyncOpts, S3Opts};
 use crate::plan::generate_transfer_plan;
-use crate::redis_::{
-    acquire_instance_lock, commit_transfer, copy_index, get_latest_index, move_index,
-};
 use crate::rsync::{finalize, start_handshake};
 use crate::s3::create_s3_client;
 use crate::symlink::apply_symlinks;
@@ -30,10 +29,8 @@ use crate::utils::timestamp;
 mod index;
 mod opts;
 mod plan;
-mod redis_;
 mod rsync;
 mod s3;
-mod set_ops;
 mod symlink;
 #[cfg(test)]
 mod tests;
@@ -41,11 +38,7 @@ mod utils;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::Registry::default()
-        .with(EnvFilter::from_default_env())
-        .with(ErrorLayer::default())
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
-        .init();
+    init_logger();
     color_eyre::install()?;
 
     let opts = Opts::parse();
@@ -57,7 +50,13 @@ async fn main() -> Result<()> {
     let redis = redis::Client::open(opts.redis)?;
     let mut redis_conn = redis.get_async_connection().await?;
 
-    let _lock = acquire_instance_lock(&redis, &redis_opts).await?;
+    let _lock = acquire_instance_lock(
+        &redis,
+        &redis_opts.namespace,
+        redis_opts.lock_ttl,
+        redis_opts.force_break,
+    )
+    .await?;
 
     let s3 = create_s3_client(&s3_opts).await;
 
@@ -69,7 +68,9 @@ async fn main() -> Result<()> {
 
     info!("generating transfer plan.");
     let namespace = &redis_opts.namespace;
-    let latest_index = get_latest_index(&mut redis_conn, namespace).await?;
+    let latest_index = get_latest_index(&mut redis_conn, namespace)
+        .await?
+        .map(|x| format!("{namespace}:index:{x}"));
     let transfer_plan =
         generate_transfer_plan(&redis, &file_list, &redis_opts, &latest_index).await?;
     info!(

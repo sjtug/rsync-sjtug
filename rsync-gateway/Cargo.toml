@@ -10,4 +10,19 @@ aws-config = "0.54"
 aws-sdk-s3 = "0.24"
 bincode = "2.0.0-rc.2"
 clap = { version = "4.1", features = ["derive"] }
+color-eyre = "0.6"
+eyre = "0.6"
+futures = "0.3"
 redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"] }
+rsync-core = { path = "../rsync-core" }
+scan_fmt = "0.2"
+tap = "1.0"
+tokio = { version = "1.25", features = ["rt"] }
+tracing = "0.1"
+tracing-actix-web = "0.7"
+tracing-error = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2.3"
+
+[dev-dependencies]
+rsync-core = { path = "../rsync-core", features = ["tests"] }

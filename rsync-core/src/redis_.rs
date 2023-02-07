@@ -1,5 +1,10 @@
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 use std::time::Duration;
 
+use clean_path::Clean;
 use eyre::Result;
 use eyre::{bail, ensure};
 use futures::{stream, Stream, TryStreamExt};
@@ -9,8 +14,7 @@ use tokio::task::JoinHandle;
 use tokio::time;
 use tracing::{error, instrument, warn};
 
-use crate::opts::RedisOpts;
-use crate::plan::Metadata;
+use crate::metadata::{MetaExtra, Metadata};
 
 /// An instance lock based on Redis.
 pub struct RedisLock {
@@ -23,8 +27,11 @@ pub struct RedisLock {
 
 impl RedisLock {
     /// Acquire a lock.
-    pub async fn new(client: &Client, opts: &RedisOpts) -> Result<Self> {
-        let namespace = opts.namespace.clone();
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if another process is running, or failed to communicate with Redis.
+    pub async fn new(client: &Client, namespace: String, lock_ttl: u64) -> Result<Self> {
         let token = rand::random();
 
         let mut conn = client.get_async_connection().await?;
@@ -33,7 +40,7 @@ impl RedisLock {
             .arg(token)
             .arg("NX")
             .arg("EX")
-            .arg(opts.lock_ttl)
+            .arg(lock_ttl)
             .query_async::<_, bool>(&mut conn)
             .await?
         {
@@ -42,7 +49,6 @@ impl RedisLock {
 
         let refresh_handle = tokio::spawn({
             let namespace = namespace.clone();
-            let lock_ttl = opts.lock_ttl;
             let mut interval = time::interval(Duration::from_secs(lock_ttl) / 4);
             async move {
                 loop {
@@ -86,8 +92,12 @@ impl RedisLock {
         })
     }
     /// Force break an existing lock.
-    pub fn force_break(mut conn: redis::Connection, opts: &RedisOpts) -> Result<()> {
-        conn.del(format!("{}:lock", opts.namespace))?;
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if failed to communicate with Redis.
+    pub fn force_break(mut conn: redis::Connection, namespace: &str) -> Result<()> {
+        conn.del(format!("{namespace}:lock"))?;
         Ok(())
     }
 }
@@ -118,17 +128,25 @@ impl Drop for RedisLock {
 }
 
 /// Helper function to acquire a lock.
-pub async fn acquire_instance_lock(client: &Client, opts: &RedisOpts) -> Result<RedisLock> {
+///
+/// # Errors
+///
+/// Returns an error if another process is running, or failed to communicate with Redis.
+pub async fn acquire_instance_lock(
+    client: &Client,
+    namespace: &str,
+    lock_ttl: u64,
+    force_break: bool,
+) -> Result<RedisLock> {
     let lock = loop {
-        break match RedisLock::new(client, opts).await {
+        break match RedisLock::new(client, namespace.to_string(), lock_ttl).await {
             Ok(lock) => lock,
             Err(e) => {
-                if opts.force_break {
+                if force_break {
                     warn!("force breaking lock");
-                    RedisLock::force_break(client.get_connection()?, opts)?;
+                    RedisLock::force_break(client.get_connection()?, namespace)?;
                     continue;
                 }
-                error!(?e, "failed to acquire lock");
                 bail!(e)
             }
         };
@@ -138,6 +156,10 @@ pub async fn acquire_instance_lock(client: &Client, opts: &RedisOpts) -> Result<
 }
 
 /// Update metadata of a file, and return the old metadata if any.
+///
+/// # Errors
+///
+/// Returns an error if nothing is written, or failed to communicate with Redis.
 pub async fn update_metadata(
     redis: &mut impl aio::ConnectionLike,
     index: &str,
@@ -158,6 +180,10 @@ pub async fn update_metadata(
 }
 
 /// Commit a completed transfer and put the new index into effect.
+///
+/// # Errors
+///
+/// Returns an error if target index already exists, failed to communicate with Redis.
 pub async fn commit_transfer(
     redis: &mut (impl aio::ConnectionLike + Send),
     namespace: &str,
@@ -186,10 +212,14 @@ pub fn async_iter_to_stream<T: FromRedisValue + Unpin>(
 }
 
 /// Get the latest production index.
+///
+/// # Errors
+///
+/// Returns an error if failed to communicate with Redis.
 pub async fn get_latest_index(
     redis: &mut (impl aio::ConnectionLike + Send),
     namespace: &str,
-) -> Result<Option<String>> {
+) -> Result<Option<u64>> {
     let keys = async_iter_to_stream(
         redis
             .scan_match::<_, Vec<u8>>(format!("{namespace}:index:*"))
@@ -201,13 +231,11 @@ pub async fn get_latest_index(
             Ok(scan_fmt!(&k, &format!("{namespace}:index:{{d}}"), u64).ok())
         });
 
-    let maybe_latest = filtered
+    filtered
         .try_fold(None, |acc, x| async move {
             acc.map_or(Ok(Some(x)), |acc: u64| Ok(Some(acc.max(x))))
         })
-        .await?;
-
-    Ok(maybe_latest.map(|x| format!("{namespace}:index:{x}")))
+        .await
 }
 
 #[instrument(skip(redis, items))]
@@ -262,6 +290,11 @@ pub async fn move_index(
     Ok(())
 }
 
+/// Get a specific index.
+///
+/// # Errors
+///
+/// Returns an error if failed to communicate with Redis.
 pub async fn get_index(
     redis: &mut (impl aio::ConnectionLike + Send),
     key: &str,
@@ -273,4 +306,56 @@ pub async fn get_index(
             .await?;
     filenames.sort_unstable();
     Ok(filenames)
+}
+
+/// Follow a symlink and return the hash of the target.
+/// Also works if the given metadata is already a regular file.
+///
+/// Returns None if it's a dead or circular symlink.
+///
+/// # Errors
+///
+/// Returns an error if failed to communicate with Redis.
+pub async fn follow_symlink(
+    conn: &mut (impl aio::ConnectionLike + Send),
+    redis_index: &str,
+    key: &[u8],
+    mut meta_extra: MetaExtra,
+) -> Result<Option<[u8; 20]>> {
+    let filename_display = Path::new(OsStr::from_bytes(key)).display();
+
+    let mut pwd = Path::new(OsStr::from_bytes(key))
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .to_path_buf();
+
+    let mut visited = HashSet::new();
+    let hash = loop {
+        break match meta_extra {
+            MetaExtra::Symlink { ref target } => {
+                let new_loc = pwd.join(Path::new(OsStr::from_bytes(target))).clean();
+                if visited.insert(new_loc.clone()) {
+                    if let Some(new_meta) = conn
+                        .hget(redis_index, new_loc.as_os_str().as_bytes())
+                        .await?
+                    {
+                        let new_meta: Metadata = new_meta;
+                        meta_extra = new_meta.extra;
+                        pwd = new_loc
+                            .parent()
+                            .unwrap_or_else(|| Path::new(""))
+                            .to_path_buf();
+                        continue;
+                    }
+                    warn!(filename=%filename_display, target=%new_loc.display(), "symlink target not found");
+                } else {
+                    warn!(filename=%filename_display, "symlink loop detected");
+                }
+                None
+            }
+            MetaExtra::Regular { blake2b_hash } => Some(blake2b_hash),
+        };
+    };
+
+    Ok(hash)
 }

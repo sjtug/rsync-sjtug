@@ -1,40 +1,22 @@
 [package]
-name = "rsync-fetcher"
+name = "rsync-core"
 version = "0.1.0"
 edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+tests = []
+
 [dependencies]
-async-trait = "0.1"
-aws-config = "0.54"
-aws-sdk-s3 = "0.24"
 bincode = "2.0.0-rc.2"
-blake2 = "0.10"
-chrono = "0.4"
-clap = { version = "4.1", features = ["derive"] }
-color-eyre = "0.6"
-digest = "0.10"
+clean-path = "0.2"
 either = "1.8"
 eyre = "0.6"
 futures = "0.3"
-html-escape = "0.2"
-indicatif = "0.17"
-itertools = "0.10"
-md4 = "0.10"
-num = "0.4"
-pin-project = "1.0"
 rand = "0.8"
 redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"] }
-rsync-core = { path = "../rsync-core" }
 scan_fmt = "0.2"
-tempfile = "3.3"
 tokio = { version = "1.25", features = ["full"] }
 tracing = "0.1"
 tracing-error = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-unix_mode = "0.1"
-url = "2.3"
-urlencoding = "2.1"
-
-[dev-dependencies]
-rsync-core = { path = "../rsync-core", features = ["tests"] }

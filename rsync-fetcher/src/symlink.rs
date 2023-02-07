@@ -2,9 +2,11 @@ use eyre::Result;
 use redis::aio;
 use tracing::info;
 
+use rsync_core::metadata::{MetaExtra, Metadata};
+use rsync_core::redis_::update_metadata;
+
 use crate::opts::RedisOpts;
-use crate::plan::{MetaExtra, Metadata, TransferItem};
-use crate::redis_::update_metadata;
+use crate::plan::TransferItem;
 use crate::rsync::file_list::FileEntry;
 
 pub async fn apply_symlinks(

@@ -2,22 +2,18 @@
 use std::ops::ControlFlow;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use bincode::config::Configuration;
-use bincode::{Decode, Encode};
 use either::Either;
 use eyre::Result;
 use futures::{pin_mut, stream, StreamExt};
-use redis::{
-    AsyncCommands, Client, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value,
-};
+use redis::{AsyncCommands, Client};
 use tracing::{info, instrument};
 
-use crate::opts::RedisOpts;
-use crate::redis_::get_index;
-use crate::rsync::file_list::FileEntry;
-use crate::set_ops::{into_union, with_sorted_iter, Case};
+use rsync_core::metadata::{MetaExtra, Metadata};
+use rsync_core::redis_::get_index;
+use rsync_core::set_ops::{into_union, with_sorted_iter, Case};
 
-const BINCODE_CONFIG: Configuration = bincode::config::standard();
+use crate::opts::RedisOpts;
+use crate::rsync::file_list::FileEntry;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct TransferItem {
@@ -175,56 +171,6 @@ pub async fn generate_transfer_plan(
     })
 }
 
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct Metadata {
-    pub len: u64,
-    pub modify_time: SystemTime,
-    pub extra: MetaExtra,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum MetaExtra {
-    Symlink {
-        // maybe PathBuf?
-        target: Vec<u8>,
-    },
-    Regular {
-        blake2b_hash: [u8; 20],
-    },
-}
-
-impl FromRedisValue for Metadata {
-    fn from_redis_value(v: &Value) -> RedisResult<Self> {
-        match v {
-            Value::Data(data) => {
-                let (metadata, _) =
-                    bincode::decode_from_slice(data, BINCODE_CONFIG).map_err(|e| {
-                        RedisError::from((
-                            redis::ErrorKind::TypeError,
-                            "Response data not valid metadata",
-                            e.to_string(),
-                        ))
-                    })?;
-                Ok(metadata)
-            }
-            _ => Err(RedisError::from((
-                redis::ErrorKind::TypeError,
-                "Response was of incompatible type",
-            ))),
-        }
-    }
-}
-
-impl ToRedisArgs for Metadata {
-    fn write_redis_args<W>(&self, out: &mut W)
-    where
-        W: ?Sized + RedisWrite,
-    {
-        let buf = bincode::encode_to_vec(self, BINCODE_CONFIG).expect("bincode encode failed");
-        out.write_arg(&buf);
-    }
-}
-
 pub fn mod_time_eq(x: SystemTime, y: SystemTime) -> bool {
     x.duration_since(UNIX_EPOCH)
         .expect("time before unix epoch")
@@ -238,9 +184,10 @@ pub fn mod_time_eq(x: SystemTime, y: SystemTime) -> bool {
 mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
+    use rsync_core::tests::{generate_random_namespace, redis_client, MetadataIndex};
+
     use crate::plan::{generate_transfer_plan, Metadata, TransferItem};
     use crate::rsync::file_list::FileEntry;
-    use crate::tests::{generate_random_namespace, redis_client, MetadataIndex};
 
     async fn assert_plan(
         remote: &[FileEntry],

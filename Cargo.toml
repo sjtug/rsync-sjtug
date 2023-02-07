@@ -1,2 +1,2 @@
 [workspace]
-members = ["rsync-fetcher", "rsync-gateway"]
+members = ["rsync-core", "rsync-fetcher", "rsync-gateway"]

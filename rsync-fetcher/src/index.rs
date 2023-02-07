@@ -2,24 +2,21 @@
 //!
 //! Adopted from [mirror-clone](https://github.com/sjtug/mirror-clone).
 
-use std::collections::{BTreeMap, HashSet};
-use std::ffi::OsStr;
-use std::os::unix::ffi::OsStrExt;
-use std::path::Path;
+use std::collections::BTreeMap;
 use std::time::{Duration, UNIX_EPOCH};
 
 use aws_sdk_s3::types::ByteStream;
 use chrono::{DateTime, Utc};
-use clean_path::Clean;
 use eyre::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use redis::AsyncCommands;
-use tracing::warn;
+
+use rsync_core::metadata::Metadata;
+use rsync_core::redis_::follow_symlink;
+use rsync_core::utils::ToHex;
 
 use crate::opts::S3Opts;
-use crate::plan::{MetaExtra, Metadata};
-use crate::utils::ToHex;
 
 const MAX_DEPTH: usize = 64;
 
@@ -181,40 +178,10 @@ async fn generate_index(
     let mut files = scan_conn
         .hscan::<_, (Vec<u8>, Metadata)>(redis_index)
         .await?;
-    while let Some((key, mut meta)) = files.next_item().await? {
+    while let Some((key, meta)) = files.next_item().await? {
         let filename = String::from_utf8_lossy(&key);
 
-        let mut pwd = Path::new(OsStr::from_bytes(&key))
-            .parent()
-            .unwrap_or_else(|| Path::new(""))
-            .to_path_buf();
-
-        let mut visited = HashSet::new();
-        let hash = loop {
-            break match meta.extra {
-                MetaExtra::Symlink { ref target } => {
-                    let new_loc = pwd.join(Path::new(OsStr::from_bytes(target))).clean();
-                    if visited.insert(new_loc.clone()) {
-                        if let Some(new_meta) = hget_conn
-                            .hget(redis_index, new_loc.as_os_str().as_bytes())
-                            .await?
-                        {
-                            meta = new_meta;
-                            pwd = new_loc
-                                .parent()
-                                .unwrap_or_else(|| Path::new(""))
-                                .to_path_buf();
-                            continue;
-                        }
-                        warn!(%filename, target=%new_loc.display(), "symlink target not found");
-                    } else {
-                        warn!(%filename, "symlink loop detected");
-                    }
-                    None
-                }
-                MetaExtra::Regular { blake2b_hash } => Some(blake2b_hash),
-            };
-        };
+        let hash = follow_symlink(&mut hget_conn, redis_index, &key, meta.extra).await?;
 
         if let Some(hash) = hash {
             index.insert(&filename, hash, max_depth);
@@ -277,7 +244,9 @@ mod tests {
 
     use itertools::Itertools;
 
-    use crate::tests::{generate_random_namespace, redis_client, MetadataIndex};
+    use rsync_core::metadata::MetaExtra;
+    use rsync_core::tests::{generate_random_namespace, redis_client, MetadataIndex};
+    use rsync_core::utils::ToHex;
 
     use super::*;
 

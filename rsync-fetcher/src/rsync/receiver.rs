@@ -18,13 +18,15 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 use tokio::net::tcp::OwnedReadHalf;
 use tracing::{debug, info, instrument};
 
+use rsync_core::metadata::{MetaExtra, Metadata};
+use rsync_core::redis_::update_metadata;
+use rsync_core::utils::ToHex;
+
 use crate::opts::{RedisOpts, S3Opts};
-use crate::plan::{MetaExtra, Metadata};
-use crate::redis_::update_metadata;
 use crate::rsync::checksum::SumHead;
 use crate::rsync::envelope::EnvelopeRead;
 use crate::rsync::file_list::FileEntry;
-use crate::utils::{hash, ToHex};
+use crate::utils::hash;
 
 pub struct Receiver {
     rx: EnvelopeRead<BufReader<OwnedReadHalf>>,

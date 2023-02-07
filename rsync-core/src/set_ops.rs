@@ -1,6 +1,4 @@
 //! Operations on sorted async iterators.
-//!
-//! TODO move this to the core crate (if we ever make one).
 
 use std::cmp::Ordering;
 use std::future::Future;
