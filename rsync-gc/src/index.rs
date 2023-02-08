@@ -21,7 +21,7 @@ pub async fn scan_live_index(
     index.sort_unstable();
 
     let (delete, keep) = index.split_at(index.len().saturating_sub(keep_count));
-    let delete_before = keep.first().copied().unwrap_or(0);
+    let delete_before = keep.first().copied().unwrap_or(u64::MAX);
 
     Ok(ScanIndex {
         delete_before,
