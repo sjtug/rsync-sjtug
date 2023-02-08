@@ -9,10 +9,9 @@ use redis::{AsyncCommands, Client};
 use tracing::{info, instrument};
 
 use rsync_core::metadata::{MetaExtra, Metadata};
-use rsync_core::redis_::get_index;
+use rsync_core::redis_::{get_index, RedisOpts};
 use rsync_core::set_ops::{into_union, with_sorted_iter, Case};
 
-use crate::opts::RedisOpts;
 use crate::rsync::file_list::FileEntry;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -184,6 +183,7 @@ pub fn mod_time_eq(x: SystemTime, y: SystemTime) -> bool {
 mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
+    use rsync_core::redis_::RedisOpts;
     use rsync_core::tests::{generate_random_namespace, redis_client, MetadataIndex};
 
     use crate::plan::{generate_transfer_plan, Metadata, TransferItem};
@@ -208,7 +208,11 @@ mod tests {
         let plan = generate_transfer_plan(
             &client,
             remote,
-            &namespace.parse().unwrap(),
+            &RedisOpts {
+                namespace,
+                force_break: false,
+                lock_ttl: 5,
+            },
             &use_latest.then_some(latest_index),
         )
         .await

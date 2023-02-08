@@ -14,15 +14,15 @@ use indicatif::{ProgressBar, ProgressStyle};
 use tracing::info;
 
 use rsync_core::redis_::{
-    acquire_instance_lock, commit_transfer, copy_index, get_latest_index, move_index,
+    acquire_instance_lock, commit_transfer, copy_index, get_latest_index, move_index, RedisOpts,
 };
+use rsync_core::s3::{create_s3_client, S3Opts};
 use rsync_core::utils::init_logger;
 
 use crate::index::generate_index_and_upload;
-use crate::opts::{Opts, RedisOpts, RsyncOpts, S3Opts};
+use crate::opts::{Opts, RsyncOpts};
 use crate::plan::generate_transfer_plan;
 use crate::rsync::{finalize, start_handshake};
-use crate::s3::create_s3_client;
 use crate::symlink::apply_symlinks;
 use crate::utils::timestamp;
 
@@ -30,7 +30,6 @@ mod index;
 mod opts;
 mod plan;
 mod rsync;
-mod s3;
 mod symlink;
 #[cfg(test)]
 mod tests;
@@ -50,13 +49,7 @@ async fn main() -> Result<()> {
     let redis = redis::Client::open(opts.redis)?;
     let mut redis_conn = redis.get_async_connection().await?;
 
-    let _lock = acquire_instance_lock(
-        &redis,
-        &redis_opts.namespace,
-        redis_opts.lock_ttl,
-        redis_opts.force_break,
-    )
-    .await?;
+    let _lock = acquire_instance_lock(&redis, &redis_opts).await?;
 
     let s3 = create_s3_client(&s3_opts).await;
 

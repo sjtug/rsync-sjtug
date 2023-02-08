@@ -14,9 +14,9 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 use tokio::net::tcp::OwnedWriteHalf;
 use tracing::{debug, info, warn};
 
+use rsync_core::s3::S3Opts;
 use rsync_core::utils::ToHex;
 
-use crate::opts::S3Opts;
 use crate::plan::TransferItem;
 use crate::rsync::checksum::{checksum_1, checksum_2, SumHead};
 use crate::rsync::file_list::FileEntry;

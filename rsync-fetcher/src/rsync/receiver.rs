@@ -19,10 +19,10 @@ use tokio::net::tcp::OwnedReadHalf;
 use tracing::{debug, info, instrument};
 
 use rsync_core::metadata::{MetaExtra, Metadata};
-use rsync_core::redis_::update_metadata;
+use rsync_core::redis_::{update_metadata, RedisOpts};
+use rsync_core::s3::S3Opts;
 use rsync_core::utils::ToHex;
 
-use crate::opts::{RedisOpts, S3Opts};
 use crate::rsync::checksum::SumHead;
 use crate::rsync::envelope::EnvelopeRead;
 use crate::rsync::file_list::FileEntry;

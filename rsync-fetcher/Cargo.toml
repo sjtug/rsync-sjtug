@@ -25,7 +25,7 @@ num = "0.4"
 pin-project = "1.0"
 rand = "0.8"
 redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"] }
-rsync-core = { path = "../rsync-core" }
+rsync-core = { path = "../rsync-core", features = ["s3"] }
 scan_fmt = "0.2"
 tempfile = "3.3"
 tokio = { version = "1.25", features = ["full"] }

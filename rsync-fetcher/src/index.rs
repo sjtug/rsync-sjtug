@@ -14,9 +14,8 @@ use redis::AsyncCommands;
 
 use rsync_core::metadata::Metadata;
 use rsync_core::redis_::follow_symlink;
+use rsync_core::s3::S3Opts;
 use rsync_core::utils::ToHex;
-
-use crate::opts::S3Opts;
 
 const MAX_DEPTH: usize = 64;
 

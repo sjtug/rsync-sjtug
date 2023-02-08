@@ -5,9 +5,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
+s3 = ["aws-config", "aws-sdk-s3", "url"]
 tests = []
 
 [dependencies]
+aws-config = { version = "0.54", optional = true }
+aws-sdk-s3 = { version = "0.24", optional = true }
 bincode = "2.0.0-rc.2"
 clean-path = "0.2"
 either = "1.8"
@@ -20,3 +23,4 @@ tokio = { version = "1.25", features = ["full"] }
 tracing = "0.1"
 tracing-error = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = { version = "2.3", optional = true }

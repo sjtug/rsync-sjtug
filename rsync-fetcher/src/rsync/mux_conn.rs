@@ -6,7 +6,9 @@ use tempfile::TempDir;
 use tokio::io::BufReader;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
-use crate::opts::{RedisOpts, S3Opts};
+use rsync_core::redis_::RedisOpts;
+use rsync_core::s3::S3Opts;
+
 use crate::rsync::envelope::EnvelopeRead;
 use crate::rsync::file_list::FileEntry;
 use crate::rsync::generator::Generator;

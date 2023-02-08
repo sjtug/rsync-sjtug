@@ -1,6 +1,14 @@
 use aws_sdk_s3::{Client, Region};
+use url::Url;
 
-use crate::opts::S3Opts;
+#[derive(Debug, Clone)]
+pub struct S3Opts {
+    pub region: String,
+    pub url: Url,
+    pub bucket: String,
+    // With end slash.
+    pub prefix: String,
+}
 
 pub async fn create_s3_client(opts: &S3Opts) -> Client {
     let shared_config = aws_config::load_from_env().await;

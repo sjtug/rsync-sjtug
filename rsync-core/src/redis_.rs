@@ -16,6 +16,13 @@ use tracing::{error, instrument, warn};
 
 use crate::metadata::{MetaExtra, Metadata};
 
+#[derive(Debug, Clone)]
+pub struct RedisOpts {
+    pub namespace: String,
+    pub force_break: bool,
+    pub lock_ttl: u64,
+}
+
 /// An instance lock based on Redis.
 pub struct RedisLock {
     // Need to use a sync connection because the lock is released in the Drop impl.
@@ -132,17 +139,17 @@ impl Drop for RedisLock {
 /// # Errors
 ///
 /// Returns an error if another process is running, or failed to communicate with Redis.
-pub async fn acquire_instance_lock(
-    client: &Client,
-    namespace: &str,
-    lock_ttl: u64,
-    force_break: bool,
-) -> Result<RedisLock> {
+pub async fn acquire_instance_lock(client: &Client, opts: &RedisOpts) -> Result<RedisLock> {
+    let RedisOpts {
+        namespace,
+        force_break,
+        lock_ttl,
+    } = opts;
     let lock = loop {
-        break match RedisLock::new(client, namespace.to_string(), lock_ttl).await {
+        break match RedisLock::new(client, namespace.to_string(), *lock_ttl).await {
             Ok(lock) => lock,
             Err(e) => {
-                if force_break {
+                if *force_break {
                     warn!("force breaking lock");
                     RedisLock::force_break(client.get_connection()?, namespace)?;
                     continue;

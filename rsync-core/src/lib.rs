@@ -6,6 +6,8 @@
 
 pub mod metadata;
 pub mod redis_;
+#[cfg(feature = "s3")]
+pub mod s3;
 pub mod set_ops;
 #[cfg(feature = "tests")]
 pub mod tests;

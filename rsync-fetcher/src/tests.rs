@@ -1,8 +1,5 @@
-use std::convert::Infallible;
-use std::str::FromStr;
 use std::time::SystemTime;
 
-use crate::opts::RedisOpts;
 use crate::plan::TransferItem;
 use crate::rsync::file_list::FileEntry;
 
@@ -25,17 +22,5 @@ impl FileEntry {
             link_target: None,
             idx,
         }
-    }
-}
-
-impl FromStr for RedisOpts {
-    type Err = Infallible;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self {
-            namespace: s.to_string(),
-            force_break: false,
-            lock_ttl: 5,
-        })
     }
 }

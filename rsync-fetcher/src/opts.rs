@@ -3,6 +3,9 @@ use std::ffi::OsString;
 use clap::{ArgAction, Parser};
 use url::Url;
 
+use rsync_core::redis_::RedisOpts;
+use rsync_core::s3::S3Opts;
+
 use crate::rsync::filter::Rule;
 
 const LOCK_TIMEOUT: u64 = 3 * 60;
@@ -48,15 +51,6 @@ pub struct Opts {
     pub include: Vec<OsString>,
 }
 
-#[derive(Debug, Clone)]
-pub struct S3Opts {
-    pub region: String,
-    pub url: Url,
-    pub bucket: String,
-    // With end slash.
-    pub prefix: String,
-}
-
 impl From<&Opts> for S3Opts {
     fn from(opts: &Opts) -> Self {
         let prefix = if opts.s3_prefix.ends_with('/') {
@@ -71,13 +65,6 @@ impl From<&Opts> for S3Opts {
             prefix,
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct RedisOpts {
-    pub namespace: String,
-    pub force_break: bool,
-    pub lock_ttl: u64,
 }
 
 impl From<&Opts> for RedisOpts {

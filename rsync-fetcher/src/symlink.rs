@@ -3,9 +3,8 @@ use redis::aio;
 use tracing::info;
 
 use rsync_core::metadata::{MetaExtra, Metadata};
-use rsync_core::redis_::update_metadata;
+use rsync_core::redis_::{update_metadata, RedisOpts};
 
-use crate::opts::RedisOpts;
 use crate::plan::TransferItem;
 use crate::rsync::file_list::FileEntry;
 
