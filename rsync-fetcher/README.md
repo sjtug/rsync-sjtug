@@ -17,7 +17,7 @@ redis instead of to a filesystem.
 
 ## Implementation Details
 
-1. Connect to Redis and S3, check if there's already another instance running.
+1. Connect to Redis and S3, check if there's already another instance (fetcher, gc) running.
 2. Fetch file list from rsync server.
 3. Calculate the delta between the remote file list and the local index, which is
    the union of current production index and last partial index (if any).

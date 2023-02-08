@@ -218,6 +218,27 @@ pub fn async_iter_to_stream<T: FromRedisValue + Unpin>(
     })
 }
 
+/// Iterate through all live index.
+///
+/// # Errors
+///
+/// Returns an error if failed to communicate with Redis.
+pub async fn live_index<'a>(
+    redis: &'a mut (impl aio::ConnectionLike + Send),
+    namespace: &'a str,
+) -> Result<impl Stream<Item = Result<u64>> + 'a> {
+    let keys = async_iter_to_stream(
+        redis
+            .scan_match::<_, Vec<u8>>(format!("{namespace}:index:*"))
+            .await?,
+    );
+    Ok(keys
+        .try_filter_map(|k| async move { Ok(String::from_utf8(k).ok()) })
+        .try_filter_map(move |k| async move {
+            Ok(scan_fmt!(&k, &format!("{namespace}:index:{{d}}"), u64).ok())
+        }))
+}
+
 /// Get the latest production index.
 ///
 /// # Errors
@@ -227,18 +248,9 @@ pub async fn get_latest_index(
     redis: &mut (impl aio::ConnectionLike + Send),
     namespace: &str,
 ) -> Result<Option<u64>> {
-    let keys = async_iter_to_stream(
-        redis
-            .scan_match::<_, Vec<u8>>(format!("{namespace}:index:*"))
-            .await?,
-    );
-    let filtered = keys
-        .try_filter_map(|k| async move { Ok(String::from_utf8(k).ok()) })
-        .try_filter_map(|k| async move {
-            Ok(scan_fmt!(&k, &format!("{namespace}:index:{{d}}"), u64).ok())
-        });
+    let index = live_index(redis, namespace).await?;
 
-    filtered
+    index
         .try_fold(None, |acc, x| async move {
             acc.map_or(Ok(Some(x)), |acc: u64| Ok(Some(acc.max(x))))
         })

@@ -5,6 +5,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
+default = []
 s3 = ["aws-config", "aws-sdk-s3", "url"]
 s3-tests = ["s3", "tests", "aws-credential-types", "aws-sdk-s3/test-util", "s3s", "s3s-aws", "s3s-fs", "tempfile"]
 tests = []
