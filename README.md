@@ -21,6 +21,34 @@ versions older than 2.6.0 are supported.
 * **rsync-gateway** - serves the mirrored repository from s3 in **http** protocol.
 * **rsync-gc** - periodically removes old versions of files from s3.
 
+## Example
+
+1. Sync rsync repository to S3.
+    ```bash
+    $ RUST_LOG=info RUST_BACKTRACE=1 AWS_ACCESS_KEY_ID=<ID> AWS_SECRET_ACCESS_KEY=<KEY> \
+      rsync-fetcher \
+        --src rsync://upstream/path \
+        --s3-url https://s3_api_endpoint --s3-region region --s3-bucket bucket --s3-prefix repo_name \
+        --redis redis://localhost --redis-namespace repo_name \ 
+        --repository repo_name
+    ```
+2. Serve the repository over HTTP.
+    ```bash
+    $ RUST_LOG=info RUST_BACKTRACE=1 \
+      rsync-gateway 127.0.0.1:8081 \
+        --s3-base http://s3_http_url \
+        --redis redis://localhost --redis-namespace repo_name
+    ```
+3. GC old versions of files periodically.
+    ```bash
+    $ RUST_LOG=info RUST_BACKTRACE=1 AWS_ACCESS_KEY_ID=<ID> AWS_SECRET_ACCESS_KEY=<KEY> \
+      rsync-gc \
+        --s3-url https://s3_api_endpoint --s3-region region --s3-bucket bucket --s3-prefix repo_name \
+        --redis redis://localhost --redis-namespace repo_name \ 
+        --keep 2
+    ```
+    > It's recommended to keep at least 2 versions of files in case a gateway is still using an old revision.
+
 ## Design
 
 File data and their metadata are stored separately.
