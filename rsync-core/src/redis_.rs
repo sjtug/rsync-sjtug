@@ -166,14 +166,15 @@ pub async fn acquire_instance_lock(client: &Client, opts: &RedisOpts) -> Result<
 ///
 /// # Errors
 ///
-/// Returns an error if nothing is written, or failed to communicate with Redis.
+/// Returns an error if nothing is written, the source field is not of type Metadata, or fails to
+/// communicate with Redis.
 pub async fn update_metadata(
     redis: &mut impl aio::ConnectionLike,
     index: &str,
     path: &[u8],
     metadata: Metadata,
 ) -> Result<Option<Metadata>> {
-    // TODO rollback
+    // No need to rollback because if the transaction fails, nothing is written.
     let (old_meta, h_added): (Option<Metadata>, usize) = redis::pipe()
         .atomic()
         .hget(index, path)
@@ -190,7 +191,7 @@ pub async fn update_metadata(
 ///
 /// # Errors
 ///
-/// Returns an error if target index already exists, failed to communicate with Redis.
+/// Returns an error if target index already exists, or fails to communicate with Redis.
 pub async fn commit_transfer(
     redis: &mut (impl aio::ConnectionLike + Send),
     namespace: &str,
@@ -199,7 +200,6 @@ pub async fn commit_transfer(
     let old_index = format!("{namespace}:partial");
     let new_index = format!("{namespace}:index:{timestamp}");
 
-    // TODO rollback
     let succ: bool = redis.rename(old_index, new_index).await?;
     ensure!(succ, "rename failed");
 
@@ -272,7 +272,6 @@ pub async fn copy_index(
             String::from_utf8_lossy(item)
         );
 
-        // TODO rollback
         let set: usize = redis.hset(to, item, entry).await?;
 
         ensure!(set == 1, "set failed");
@@ -295,7 +294,6 @@ pub async fn move_index(
             String::from_utf8_lossy(item)
         );
 
-        // TODO rollback
         let (h_deleted, h_added): (usize, usize) = redis::pipe()
             .atomic()
             .hdel(from, item)

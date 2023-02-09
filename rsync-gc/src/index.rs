@@ -39,7 +39,7 @@ pub async fn rename_to_stale(
     let mut pipe = redis::pipe();
     pipe.atomic();
 
-    // TODO rollback
+    // No need to rollback because this won't break consistency.
     for i in index {
         pipe.rename_nx(
             format!("{namespace}:index:{i}"),
@@ -47,7 +47,15 @@ pub async fn rename_to_stale(
         );
     }
 
-    pipe.query_async::<_, Vec<bool>>(conn).await?;
+    let result: Vec<bool> = pipe.query_async(conn).await?;
+    for idx in result
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, r)| if r { None } else { Some(i) })
+    {
+        tracing::warn!("failed to rename index {} to stale", index[idx]);
+    }
+
     Ok(())
 }
 
@@ -59,13 +67,23 @@ pub async fn commit_gc(
     let mut pipe = redis::pipe();
     pipe.atomic();
 
-    // TODO rollback
+    // No need to rollback because this won't break consistency.
     for i in index {
         pipe.del(format!("{namespace}:stale:{i}"));
     }
-    // Partial-stale index might not exist.
     pipe.del(format!("{namespace}:partial-stale"));
 
-    pipe.query_async::<_, Vec<bool>>(conn).await?;
+    let result: Vec<bool> = pipe.query_async(conn).await?;
+    for idx in result
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, r)| if r { None } else { Some(i) })
+    {
+        // It's okay if we failed to delete partial-stale because it may not exist.
+        if idx < index.len() {
+            tracing::warn!("failed to delete stale index {}", index[idx]);
+        }
+    }
+
     Ok(())
 }

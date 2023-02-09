@@ -78,6 +78,8 @@ async fn main() -> Result<()> {
         // These files were uploaded to S3 during last partial transfer, but are removed from remote
         // rsync server.
         info!("moving outdated files from last partial sync to partial-stale index.");
+        // On error this would leave some files in the partial index, but the partial index will be
+        // updated anyway during next transfer.
         move_index(
             &mut redis_conn,
             &format!("{namespace}:partial"),
@@ -90,6 +92,8 @@ async fn main() -> Result<()> {
     if !transfer_plan.copy_from_latest.is_empty() {
         info!("copying up-to-date files from latest index to partial index.");
         // These files already exists in the latest index. Copy them to the partial index.
+        // On error this would leave some files in the partial index, but the partial index will be
+        // updated anyway during next transfer.
         copy_index(
             &mut redis_conn,
             latest_index.as_ref().expect("latest index"),

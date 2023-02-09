@@ -45,7 +45,12 @@ async fn main() -> Result<()> {
         keep,
         delete,
     } = scan_live_index(&mut redis_conn, &redis_opts.namespace, opts.keep).await?;
-    info!(keep = keep.len(), delete = delete.len(), delete_before, "scanned index");
+    info!(
+        keep = keep.len(),
+        delete = delete.len(),
+        delete_before,
+        "scanned index"
+    );
 
     rename_to_stale(&mut redis_conn, &redis_opts.namespace, &delete).await?;
 
