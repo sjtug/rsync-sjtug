@@ -16,7 +16,9 @@ use crate::rsync::file_list::FileEntry;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct TransferItem {
+    /// File idx in file list.
     pub idx: u32,
+    /// If present, perform delta transfer on this file with given hash (address on S3).
     pub blake2b_hash: Option<[u8; 20]>,
 }
 
@@ -44,6 +46,7 @@ pub async fn generate_transfer_plan(
     remote: &[FileEntry],
     opts: &RedisOpts,
     latest_index: &Option<String>,
+    no_delta: bool,
 ) -> Result<TransferPlan> {
     let namespace = &opts.namespace;
 
@@ -131,11 +134,11 @@ pub async fn generate_transfer_plan(
                             // File differs.
                             // We book the old hash so that we may download the file on s3 and perform delta
                             // transfer.
-                            // TODO: if delta transfer is disabled, set blake2b_hash to None
-                            // TODO: or we can't set it to None, because we need to detect partial-stale?
                             let blake2b_hash = match metadata.extra {
                                 MetaExtra::Symlink { .. } => None,
-                                MetaExtra::Regular { blake2b_hash } => Some(blake2b_hash),
+                                MetaExtra::Regular { blake2b_hash } => {
+                                    (!no_delta).then_some(blake2b_hash)
+                                }
                             };
                             ControlFlow::Break(TransferKind::Remote(TransferItem {
                                 idx: remote.idx,
@@ -210,6 +213,7 @@ mod tests {
                 lock_ttl: 5,
             },
             &use_latest.then_some(latest_index),
+            false,
         )
         .await
         .unwrap();

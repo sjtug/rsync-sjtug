@@ -49,6 +49,9 @@ pub struct Opts {
     /// Include files matching given pattern.
     #[clap(long, action = ArgAction::Append)]
     pub include: Vec<OsString>,
+    /// Disable delta transfer.
+    #[clap(long)]
+    pub no_delta: bool,
 }
 
 impl From<&Opts> for S3Opts {

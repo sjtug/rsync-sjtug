@@ -64,8 +64,14 @@ async fn main() -> Result<()> {
     let latest_index = get_latest_index(&mut redis_conn, namespace)
         .await?
         .map(|x| format!("{namespace}:index:{x}"));
-    let transfer_plan =
-        generate_transfer_plan(&redis, &file_list, &redis_opts, &latest_index).await?;
+    let transfer_plan = generate_transfer_plan(
+        &redis,
+        &file_list,
+        &redis_opts,
+        &latest_index,
+        opts.no_delta,
+    )
+    .await?;
     info!(
         downloads=%transfer_plan.downloads.len(),
         copy_from_latest=%transfer_plan.copy_from_latest.len(),
