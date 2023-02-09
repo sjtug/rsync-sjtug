@@ -96,7 +96,9 @@ async fn main() -> Result<()> {
         // updated anyway during next transfer.
         copy_index(
             &mut redis_conn,
-            latest_index.as_ref().expect("latest index"),
+            latest_index
+                .as_ref()
+                .expect("copy_from_latest is not empty, so latest_index must be Some"),
             &format!("{namespace}:partial"),
             &transfer_plan.copy_from_latest,
         )

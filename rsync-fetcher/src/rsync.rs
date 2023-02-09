@@ -1,4 +1,4 @@
-use eyre::Result;
+use eyre::{Context, ContextCompat, Result};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use url::Url;
@@ -23,11 +23,15 @@ const BYE: i32 = -1;
 pub async fn start_handshake(url: &Url) -> Result<HandshakeConn> {
     let port = url.port().unwrap_or(873);
     let path = url.path().trim_start_matches('/');
-    let module = path.split('/').next().unwrap_or("must have module");
+    let module = path.split('/').next().context("empty remote path")?;
 
-    let stream = TcpStream::connect(format!("{}:{}", url.host_str().expect("has host"), port))
-        .await
-        .expect("connect success");
+    let stream = TcpStream::connect(format!(
+        "{}:{}",
+        url.host_str().context("missing remote host")?,
+        port
+    ))
+    .await
+    .context("rsync server refused connection. Is it running?")?;
 
     let mut handshake = HandshakeConn::new(stream);
     handshake.start_inband_exchange(module, path).await?;

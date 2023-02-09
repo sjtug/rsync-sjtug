@@ -140,7 +140,7 @@ impl EnvelopeRead<BufReader<OwnedReadHalf>> {
 
         // File length should always be positive right?
         #[allow(clippy::cast_sign_loss)]
-            let len = self.read_rsync_long().await? as u64;
+        let len = self.read_rsync_long().await? as u64;
 
         let modify_time = if same_time {
             prev.expect("prev must exist").modify_time
