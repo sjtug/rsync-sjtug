@@ -131,8 +131,7 @@ impl EnvelopeRead<BufReader<OwnedReadHalf>> {
         name_scratch.resize(inherit_name_len as usize + name_len as usize, 0);
         self.read_exact(&mut name_scratch[inherit_name_len as usize..])
             .await?;
-        // TODO: does rsync’s clean_fname() and sanitize_path() combination do
-        // anything more than Go’s filepath.Clean()?
+
         let name_raw = Path::new(OsStr::from_bytes(name_scratch));
         let name = name_raw.clean();
         if name != name_raw {
