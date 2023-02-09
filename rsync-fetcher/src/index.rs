@@ -15,7 +15,7 @@ use redis::AsyncCommands;
 use rsync_core::metadata::Metadata;
 use rsync_core::redis_::follow_symlink;
 use rsync_core::s3::S3Opts;
-use rsync_core::utils::ToHex;
+use rsync_core::utils::{ToHex, PATH_ASCII_SET};
 
 const MAX_DEPTH: usize = 64;
 
@@ -104,7 +104,7 @@ impl Index {
                 .map(|key| {
                     format!(
                         r#"<tr><td><a href="{}/{}">{}/</a></td></tr>"#,
-                        urlencoding::encode(key),
+                        percent_encoding::utf8_percent_encode(key, PATH_ASCII_SET),
                         list_key,
                         html_escape::encode_text(key)
                     )
@@ -115,10 +115,10 @@ impl Index {
                 .objects
                 .iter()
                 .map(|(key, hash)| {
-                    let path = format!("{to_root}{:x}", hash.as_hex());
+                    let href = format!("{to_root}{:x}", hash.as_hex());
                     format!(
                         r#"<tr><td><a href="{}">{}</a></td></tr>"#,
-                        urlencoding::encode(&path),
+                        href,
                         html_escape::encode_text(key)
                     )
                 })
@@ -272,7 +272,8 @@ mod tests {
     async fn assert_index(
         files: &[(&str, MetaExtra)],
         prefix: &str,
-        expected_entries: &[(&str, &str)],
+        expected_files: &[(&str, &str)],
+        expected_dirs: &[(&str, &str)],
     ) {
         let client = redis_client();
         let namespace = generate_random_namespace();
@@ -299,12 +300,15 @@ mod tests {
         let index = generate_index(&client, &test_index, 999).await.unwrap();
         let content = index.index_for(prefix, &["test"], "list.html", "");
 
-        for (key, hash) in expected_entries {
+        for (key, href) in expected_files {
             let expected = format!(
-                r#"<tr><td><a href="{}">{}</a></td></tr>"#,
-                urlencoding::encode(hash),
+                r#"<tr><td><a href="{href}">{}</a></td></tr>"#,
                 html_escape::encode_text(key)
             );
+            assert!(content.contains(&expected), "{expected} not found in index");
+        }
+        for (key, href) in expected_dirs {
+            let expected = format!(r#"<tr><td><a href="{href}/list.html">{key}</a></td></tr>"#,);
             assert!(content.contains(&expected), "{expected} not found in index");
         }
     }
@@ -364,6 +368,29 @@ mod tests {
                 ("a", &format!("../{:x}", &[0; 20].as_hex())),
                 ("b", &format!("../{:x}", &[1; 20].as_hex())),
             ],
+            &[("c/", "c")],
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_utf8() {
+        assert_index(
+            &[
+                ("你好 世界", MetaExtra::regular([0; 20])),
+                ("intérêt", MetaExtra::regular([1; 20])),
+                ("你好 世界/a", MetaExtra::regular([1; 20])),
+                ("intérêt/a", MetaExtra::regular([1; 20])),
+            ],
+            "",
+            &[
+                ("你好 世界", &format!("../{:x}", &[0; 20].as_hex())),
+                ("intérêt", &format!("../{:x}", &[1; 20].as_hex())),
+            ],
+            &[
+                ("你好 世界/", "%E4%BD%A0%E5%A5%BD%20%E4%B8%96%E7%95%8C"),
+                ("intérêt/", "int%C3%A9r%C3%AAt"),
+            ],
         )
         .await;
     }
@@ -374,6 +401,7 @@ mod tests {
             &[("a", MetaExtra::regular([0; 20]))],
             "",
             &[("a", &format!("../{:x}", &[0; 20].as_hex()))],
+            &[],
         )
         .await;
 
@@ -381,6 +409,7 @@ mod tests {
             &[("a/b", MetaExtra::regular([0; 20]))],
             "a/",
             &[("b", &format!("../../{:x}", &[0; 20].as_hex()))],
+            &[],
         )
         .await;
     }
@@ -394,6 +423,7 @@ mod tests {
             ],
             "",
             &[("b", &format!("../{:x}", &[1; 20].as_hex()))],
+            &[],
         )
         .await;
     }
@@ -409,6 +439,7 @@ mod tests {
             ],
             "a/a/a/",
             &[("a", &format!("../../../../{:x}", &[1; 20].as_hex()))],
+            &[],
         )
         .await;
     }
@@ -422,12 +453,13 @@ mod tests {
             ],
             "",
             &[],
+            &[],
         )
         .await;
     }
 
     #[tokio::test]
     async fn test_broken() {
-        assert_index(&[("a", MetaExtra::symlink("b"))], "", &[]).await;
+        assert_index(&[("a", MetaExtra::symlink("b"))], "", &[], &[]).await;
     }
 }

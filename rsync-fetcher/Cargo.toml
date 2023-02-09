@@ -23,17 +23,17 @@ indicatif = "0.17"
 itertools = "0.10"
 md4 = "0.10"
 num = "0.4"
+percent-encoding = "2.2"
 pin-project = "1.0"
 rand = "0.8"
 redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"] }
-rsync-core = { path = "../rsync-core", features = ["s3"] }
+rsync-core = { path = "../rsync-core", features = ["s3", "percent-encoding"] }
 scan_fmt = "0.2"
 tempfile = "3.3"
 tokio = { version = "1.25", features = ["full"] }
 tracing = "0.1"
 unix_mode = "0.1"
 url = "2.3"
-urlencoding = "2.1"
 
 [dev-dependencies]
 rsync-core = { path = "../rsync-core", features = ["tests"] }

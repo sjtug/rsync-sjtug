@@ -2218,6 +2218,7 @@ dependencies = [
  "either",
  "eyre",
  "futures",
+ "percent-encoding",
  "rand",
  "redis",
  "s3s",
@@ -2254,6 +2255,7 @@ dependencies = [
  "itertools",
  "md4",
  "num",
+ "percent-encoding",
  "pin-project",
  "rand",
  "redis",
@@ -2264,7 +2266,6 @@ dependencies = [
  "tracing",
  "unix_mode",
  "url",
- "urlencoding",
 ]
 
 [[package]]
@@ -2280,6 +2281,7 @@ dependencies = [
  "color-eyre",
  "eyre",
  "futures",
+ "percent-encoding",
  "redis",
  "rsync-core",
  "scan_fmt",
@@ -2288,7 +2290,6 @@ dependencies = [
  "tracing",
  "tracing-actix-web",
  "url",
- "urlencoding",
 ]
 
 [[package]]

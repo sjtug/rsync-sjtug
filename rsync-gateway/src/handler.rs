@@ -3,7 +3,7 @@ use actix_web::{Either, HttpRequest, HttpResponse, Responder};
 use bstr::{BStr, ByteSlice};
 use tracing::debug;
 
-use rsync_core::utils::ToHex;
+use rsync_core::utils::{ToHex, PATH_ASCII_SET};
 
 use crate::opts::Opts;
 use crate::state::State;
@@ -11,12 +11,12 @@ use crate::utils::{ReportExt, ReportWrapper};
 
 /// Main handler.
 pub async fn handler(opts: Data<Opts>, state: Data<State>, req: HttpRequest) -> impl Responder {
-    let path = urlencoding::decode_binary(req.path().as_bytes());
+    let path: Vec<_> = percent_encoding::percent_decode(req.path().as_bytes()).collect();
 
     debug!(path=?BStr::new(&path), "incoming request");
 
     let listing = path.ends_with(b"/");
-    let path = path.as_ref().trim_start_with(|c| c == '/');
+    let path = path.trim_start_with(|c| c == '/');
     if listing {
         Either::Left(listing_handler(&opts, &state, path))
     } else {
@@ -29,7 +29,7 @@ fn listing_handler(opts: &Opts, state: &State, path: &[u8]) -> impl Responder {
     state.latest_index().map_or_else(
         || Either::Right(HttpResponse::NotFound()),
         |latest| {
-            let path = urlencoding::encode_binary(path);
+            let path = percent_encoding::percent_encode(path, PATH_ASCII_SET);
             let s3_base = opts.s3_base.trim_end_matches('/');
             Either::Left(Redirect::to(format!(
                 "{s3_base}/listing-{latest}/{path}index.html"

@@ -1,9 +1,23 @@
 use std::fmt::LowerHex;
 
+#[cfg(feature = "percent-encoding")]
+use percent_encoding::{AsciiSet, CONTROLS};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
+
+#[cfg(feature = "percent-encoding")]
+pub const PATH_ASCII_SET: &AsciiSet = &CONTROLS
+    .add(b' ')
+    .add(b'"')
+    .add(b'#')
+    .add(b'<')
+    .add(b'>')
+    .add(b'?')
+    .add(b'`')
+    .add(b'{')
+    .add(b'}');
 
 pub fn init_logger() {
     tracing_subscriber::Registry::default()

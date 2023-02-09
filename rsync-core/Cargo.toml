@@ -19,6 +19,7 @@ clean-path = "0.2"
 either = "1.8"
 eyre = "0.6"
 futures = "0.3"
+percent-encoding = { version = "2.2", optional = true }
 rand = "0.8"
 redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"] }
 s3s = { version = "0.3", optional = true }

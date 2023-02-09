@@ -30,6 +30,11 @@ async fn integration_test() {
             ("e".into(), Metadata::symlink(0, UNIX_EPOCH, "f")),
             ("f".into(), Metadata::symlink(0, UNIX_EPOCH, "e")),
             ("g".into(), Metadata::symlink(0, UNIX_EPOCH, "h")),
+            (
+                "你好 世界".into(),
+                Metadata::regular(0, UNIX_EPOCH, [2; 20]),
+            ),
+            ("intérêt".into(), Metadata::regular(0, UNIX_EPOCH, [3; 20])),
         ],
     );
 
@@ -61,13 +66,19 @@ async fn integration_test() {
     .await;
 
     // Files that exist should be redirected to S3.
-    let req = test::TestRequest::get().uri("/a/b").to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
-    assert_eq!(
-        resp.headers().get("Location").unwrap(),
-        &format!("http://s3/{:x}", [0; 20].as_hex())
-    );
+    for (uri, hex) in [
+        ("/a/b", [0; 20]),
+        ("/%E4%BD%A0%E5%A5%BD%20%E4%B8%96%E7%95%8C", [2; 20]),
+        ("/int%C3%A9r%C3%AAt", [3; 20]),
+    ] {
+        let req = test::TestRequest::get().uri(uri).to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            resp.headers().get("Location").unwrap(),
+            &format!("http://s3/{:x}", hex.as_hex())
+        );
+    }
 
     // Files that don't exist should return 404.
     let req = test::TestRequest::get().uri("/b").to_request();
@@ -103,11 +114,20 @@ async fn integration_test() {
     );
 
     // Listing subdirectories.
-    let req = test::TestRequest::get().uri("/a/").to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
-    assert_eq!(
-        resp.headers().get("Location").unwrap(),
-        &"http://s3/listing-42/a/index.html"
-    );
+    for (uri, href) in [
+        ("/a/", "a/index.html"),
+        (
+            "/%E4%BD%A0%E5%A5%BD%20%E4%B8%96%E7%95%8C/",
+            "%E4%BD%A0%E5%A5%BD%20%E4%B8%96%E7%95%8C/index.html",
+        ),
+        ("/int%C3%A9r%C3%AAt/", "int%C3%A9r%C3%AAt/index.html"),
+    ] {
+        let req = test::TestRequest::get().uri(uri).to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            resp.headers().get("Location").unwrap(),
+            &format!("http://s3/listing-42/{href}")
+        );
+    }
 }
