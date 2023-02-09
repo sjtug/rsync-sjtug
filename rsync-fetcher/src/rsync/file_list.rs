@@ -1,7 +1,11 @@
 use std::borrow::Cow;
+use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::path::Path;
 use std::time::{Duration, SystemTime};
 
+use clean_path::Clean;
 use eyre::{bail, Result};
 use indicatif::ProgressBar;
 use tokio::io::{AsyncReadExt, BufReader};
@@ -129,11 +133,15 @@ impl EnvelopeRead<BufReader<OwnedReadHalf>> {
             .await?;
         // TODO: does rsync’s clean_fname() and sanitize_path() combination do
         // anything more than Go’s filepath.Clean()?
-        let name = name_scratch.clone();
+        let name_raw = Path::new(OsStr::from_bytes(name_scratch));
+        let name = name_raw.clean();
+        if name != name_raw {
+            warn!("path cleaned: {:?} -> {:?}", name_raw, name);
+        }
 
         // File length should always be positive right?
         #[allow(clippy::cast_sign_loss)]
-        let len = self.read_rsync_long().await? as u64;
+            let len = self.read_rsync_long().await? as u64;
 
         let modify_time = if same_time {
             prev.expect("prev must exist").modify_time
@@ -167,7 +175,7 @@ impl EnvelopeRead<BufReader<OwnedReadHalf>> {
         };
 
         Ok(FileEntry {
-            name,
+            name: name.into_os_string().into_vec(),
             len,
             modify_time,
             mode,

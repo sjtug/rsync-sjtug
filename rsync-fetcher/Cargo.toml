@@ -12,6 +12,7 @@ bincode = "2.0.0-rc.2"
 blake2 = "0.10"
 chrono = "0.4"
 clap = { version = "4.1", features = ["derive"] }
+clean-path = "0.2"
 color-eyre = "0.6"
 digest = "0.10"
 either = "1.8"
