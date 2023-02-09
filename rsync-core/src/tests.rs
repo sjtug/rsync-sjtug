@@ -6,8 +6,8 @@ use crate::metadata::Metadata;
 
 #[must_use]
 pub fn redis_client() -> redis::Client {
-    // TODO specify redis client
-    redis::Client::open("redis://localhost").expect("redis")
+    let redis_url = option_env!("TEST_REDIS_URL").unwrap_or("redis://localhost");
+    redis::Client::open(redis_url).expect("redis")
 }
 
 #[must_use]

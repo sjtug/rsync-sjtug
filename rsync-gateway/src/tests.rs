@@ -33,11 +33,11 @@ async fn integration_test() {
         ],
     );
 
+    let redis_url = option_env!("TEST_REDIS_URL").unwrap_or("redis://localhost");
     let opts = Opts {
         bind: String::new(),
         s3_base: "http://s3".to_string(),
-        // TODO specify redis client
-        redis: "redis://localhost".parse().unwrap(),
+        redis: redis_url.parse().unwrap(),
         redis_namespace: namespace.clone(),
         update_interval: 999,
     };
