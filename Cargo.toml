@@ -1,2 +1,3 @@
 [workspace]
 members = ["rsync-core", "rsync-fetcher", "rsync-gateway", "rsync-gc"]
+resolver = "2"
