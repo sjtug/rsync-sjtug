@@ -148,10 +148,6 @@ pub async fn generate_transfer_plan(
         },
     );
 
-    // TODO we may pass down the stream to the caller, so that we may perform the transfer in parallel
-    // But there might be a problem with the size of the future, and may cause a stack overflow.
-    // Also we need to clone the channel for `apply_symlink`, `index_copy` and `generator`, so might
-    // not be a good idea anyway.
     let (mut downloads, mut copy_from_latest, mut stale) = (vec![], vec![], vec![]);
 
     pin_mut!(plan_stream);
