@@ -1,0 +1,51 @@
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+name: Release
+
+jobs:
+  create_release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          draft: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
+    name: Release
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Cargo Toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Cross Toolchain
+        if: matrix.cross
+        uses: taiki-e/install-action@cross
+      - uses: Swatinem/rust-cache@v2
+        name: Rust Cache
+        with:
+          key: ${{ matrix.target }}
+      - uses: taiki-e/upload-rust-binary-action@v1
+        name: Build and Upload
+        with:
+          bin: rsync-core, rsync-fetcher, rsync-gateway
+          target: ${{ matrix.target }}
+          checksum: sha512
+          token: ${{ secrets.GITHUB_TOKEN }}

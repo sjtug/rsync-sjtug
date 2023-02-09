@@ -1,0 +1,42 @@
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+name: Test
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        name: Checkout
+      - uses: dtolnay/rust-toolchain@stable
+        name: Setup Cargo Toolchain
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        name: Rust Cache
+      - name: Check Code Format
+        run: cargo fmt -- --check
+      - name: Run Clippy Lints
+        run: cargo clippy --workspace --all-targets --all-features --tests
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        name: Checkout
+      - name: Setup Cargo Toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        name: Rust Cache
+      - name: Start Redis
+        uses: supercharge/redis-github-action@1.4.0
+      - name: Running Tests
+        run: cargo test --workspace
