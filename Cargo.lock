@@ -782,6 +782,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bstr"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f0778972c64420fdedc63f09919c8a88bda7b25135357fd25a5d9f3257e832"
+dependencies = [
+ "memchr",
+ "once_cell",
+ "regex-automata",
+ "serde",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2263,6 +2275,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-s3",
  "bincode",
+ "bstr",
  "clap",
  "color-eyre",
  "eyre",
@@ -2275,6 +2288,7 @@ dependencies = [
  "tracing",
  "tracing-actix-web",
  "url",
+ "urlencoding",
 ]
 
 [[package]]
