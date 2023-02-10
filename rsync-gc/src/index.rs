@@ -63,6 +63,7 @@ pub async fn commit_gc(
     conn: &mut (impl aio::ConnectionLike + Send),
     namespace: &str,
     index: &[u64],
+    delete_partial: bool,
 ) -> Result<()> {
     let mut pipe = redis::pipe();
     pipe.atomic();
@@ -70,6 +71,9 @@ pub async fn commit_gc(
     // No need to rollback because this won't break consistency.
     for i in index {
         pipe.del(format!("{namespace}:stale:{i}"));
+    }
+    if delete_partial {
+        pipe.del(format!("{namespace}:partial"));
     }
     pipe.del(format!("{namespace}:partial-stale"));
 

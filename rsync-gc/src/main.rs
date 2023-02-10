@@ -59,11 +59,24 @@ async fn main() -> Result<()> {
     info!("deleted {} objects", deleted);
 
     info!("deleting stale objects...");
-    let hashes = hashes_to_remove(&mut redis_conn, &redis_opts.namespace, &delete, &keep).await?;
+    let hashes = hashes_to_remove(
+        &mut redis_conn,
+        &redis_opts.namespace,
+        &delete,
+        &keep,
+        opts.delete_partial,
+    )
+    .await?;
     bulk_delete_objs(&s3, &s3_opts, &hashes).await?;
     info!("deleted {} objects", hashes.len());
 
-    commit_gc(&mut redis_conn, &redis_opts.namespace, &delete).await?;
+    commit_gc(
+        &mut redis_conn,
+        &redis_opts.namespace,
+        &delete,
+        opts.delete_partial,
+    )
+    .await?;
 
     Ok(())
 }
