@@ -2,6 +2,7 @@ use std::fmt::LowerHex;
 
 #[cfg(feature = "percent-encoding")]
 use percent_encoding::{AsciiSet, CONTROLS};
+#[cfg(feature = "tests")]
 use tracing::level_filters::LevelFilter;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
