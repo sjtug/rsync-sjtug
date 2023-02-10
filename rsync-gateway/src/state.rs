@@ -1,5 +1,8 @@
+use std::ffi::OsStr;
 use std::future::ready;
 use std::num::NonZeroU64;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::path::Path;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -14,7 +17,7 @@ use tokio::time::interval;
 use tracing::{info, warn};
 
 use rsync_core::metadata::Metadata;
-use rsync_core::redis_::{follow_symlink, get_latest_index};
+use rsync_core::redis_::{follow_symlink, get_latest_index, recursive_resolve_dir_symlink};
 
 use crate::utils::AbortJoinHandle;
 
@@ -55,12 +58,23 @@ impl State {
         };
         let meta: Option<Metadata> = conn.hget(&index, key).await?;
 
-        if let Some(meta) = meta {
-            // We follow the symlink instead of redirecting the client to avoid circular redirection.
-            Ok(follow_symlink(&mut conn, &index, key, meta.extra).await?)
+        // We follow the symlink instead of redirecting the client to avoid circular redirection.
+        let key = Path::new(OsStr::from_bytes(key));
+        follow_symlink(&mut conn, &index, key, meta.map(|meta| meta.extra)).await
+    }
+    pub async fn resolve_dir(&self, key: &[u8]) -> Result<Vec<u8>> {
+        let mut conn = self.conn.clone();
+        let namespace = &self.namespace;
+        let index = if let Some(index) = self.latest_index() {
+            format!("{namespace}:index:{index}")
         } else {
-            Ok(None)
-        }
+            return Ok(key.to_vec());
+        };
+
+        let key = Path::new(OsStr::from_bytes(key));
+        recursive_resolve_dir_symlink(&mut conn, &index, key)
+            .await
+            .map(|p| p.into_os_string().into_vec())
     }
 }
 

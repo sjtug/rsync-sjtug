@@ -3,6 +3,9 @@
 //! Adopted from [mirror-clone](https://github.com/sjtug/mirror-clone).
 
 use std::collections::BTreeMap;
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 use std::time::{Duration, UNIX_EPOCH};
 
 use aws_sdk_s3::types::ByteStream;
@@ -180,7 +183,10 @@ async fn generate_index(
     while let Some((key, meta)) = files.next_item().await? {
         let filename = String::from_utf8_lossy(&key);
 
-        let hash = follow_symlink(&mut hget_conn, redis_index, &key, meta.extra).await?;
+        let key = Path::new(OsStr::from_bytes(&key));
+        // TODO if key points to a directory, it's ignored.
+        // i.e. symlinks to dirs are not present in the generated listing.
+        let hash = follow_symlink(&mut hget_conn, redis_index, key, Some(meta.extra)).await?;
 
         if let Some(hash) = hash {
             index.insert(&filename, hash, max_depth);

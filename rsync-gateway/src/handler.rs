@@ -18,24 +18,25 @@ pub async fn handler(opts: Data<Opts>, state: Data<State>, req: HttpRequest) -> 
     let listing = path.ends_with(b"/");
     let path = path.trim_start_with(|c| c == '/');
     if listing {
-        Either::Left(listing_handler(&opts, &state, path))
+        Either::Left(listing_handler(&opts, &state, path).await)
     } else {
         Either::Right(file_handler(&opts, &state, path).await)
     }
 }
 
 /// Handler for listing requests.
-fn listing_handler(opts: &Opts, state: &State, path: &[u8]) -> impl Responder {
-    state.latest_index().map_or_else(
+async fn listing_handler(opts: &Opts, state: &State, path: &[u8]) -> impl Responder {
+    let path = state.resolve_dir(path).await.into_resp_err()?;
+    Ok::<_, ReportWrapper>(state.latest_index().map_or_else(
         || Either::Right(HttpResponse::NotFound()),
         |latest| {
-            let path = percent_encoding::percent_encode(path, PATH_ASCII_SET);
+            let path = percent_encoding::percent_encode(&path, PATH_ASCII_SET);
             let s3_base = opts.s3_base.trim_end_matches('/');
             Either::Left(Redirect::to(format!(
                 "{s3_base}/listing-{latest}/{path}index.html"
             )))
         },
-    )
+    ))
 }
 
 /// Handler for file requests.

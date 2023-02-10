@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clean_path::Clean;
@@ -12,7 +12,7 @@ use redis::{aio, AsyncCommands, AsyncIter, Client, Commands, FromRedisValue, Scr
 use scan_fmt::scan_fmt;
 use tokio::task::JoinHandle;
 use tokio::time;
-use tracing::{error, instrument, warn};
+use tracing::{debug, error, instrument, warn};
 
 use crate::metadata::{MetaExtra, Metadata};
 
@@ -325,7 +325,22 @@ pub async fn get_index(
     Ok(filenames)
 }
 
+// Our algorithm takes slightly more steps to resolve a symlink than Linux, so > 40.
+pub const MAX_SYMLINK_LOOKUP: usize = 100;
+
+macro_rules! guard_depth {
+    ($depth: expr, $key: expr) => {
+        $depth += 1;
+        if $depth > MAX_SYMLINK_LOOKUP {
+            warn!(filename=%$key.display(), "symlink depth limit exceeded");
+            return Ok(None);
+        }
+    };
+}
+
+#[allow(unreachable_code)]
 /// Follow a symlink and return the hash of the target.
+/// Only works on files.
 /// Also works if the given metadata is already a regular file.
 ///
 /// Returns None if it's a dead or circular symlink.
@@ -336,43 +351,159 @@ pub async fn get_index(
 pub async fn follow_symlink(
     conn: &mut (impl aio::ConnectionLike + Send),
     redis_index: &str,
-    key: &[u8],
-    mut meta_extra: MetaExtra,
+    key: &Path,
+    mut maybe_meta_extra: Option<MetaExtra>,
 ) -> Result<Option<[u8; 20]>> {
-    let filename_display = Path::new(OsStr::from_bytes(key)).display();
+    let mut depth = 0;
 
-    let mut pwd = Path::new(OsStr::from_bytes(key))
-        .parent()
-        .unwrap_or_else(|| Path::new(""))
-        .to_path_buf();
+    if key.is_absolute() {
+        warn!(filename=%key.display(), "absolute path is not supported, refusing to follow");
+        return Ok(None);
+    }
+    if key.starts_with("..") {
+        warn!(filename=%key.display(), "path starts with .., refusing to follow");
+        return Ok(None);
+    }
+    debug!("following symlink: {}", key.display());
+    let original_key = key;
 
     let mut visited = HashSet::new();
-    let hash = loop {
-        break match meta_extra {
-            MetaExtra::Symlink { ref target } => {
-                let new_loc = pwd.join(Path::new(OsStr::from_bytes(target))).clean();
-                if visited.insert(new_loc.clone()) {
-                    if let Some(new_meta) = conn
-                        .hget(redis_index, new_loc.as_os_str().as_bytes())
-                        .await?
-                    {
+    let mut key = key.to_path_buf();
+    let hash = 'outer: loop {
+        let mut pwd = key.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
+
+        // This loop only resolves the symlink if there's no directory symlink in the path.
+        if let Some(mut meta_extra) = maybe_meta_extra.take() {
+            loop {
+                match meta_extra {
+                    MetaExtra::Symlink { ref target } => {
+                        let new_loc = pwd.join(Path::new(OsStr::from_bytes(target))).clean();
+                        if !visited.insert(new_loc.clone()) {
+                            warn!(filename = %original_key.display(), "symlink loop detected");
+                            break 'outer None;
+                        }
+
+                        guard_depth!(depth, original_key);
+                        let Some(new_meta) = conn
+                            .hget(redis_index, new_loc.as_os_str().as_bytes())
+                            .await? else {
+                            key = new_loc;
+                            break;
+                        };
+
                         let new_meta: Metadata = new_meta;
                         meta_extra = new_meta.extra;
                         pwd = new_loc
                             .parent()
                             .unwrap_or_else(|| Path::new(""))
                             .to_path_buf();
-                        continue;
                     }
-                    warn!(filename=%filename_display, target=%new_loc.display(), "symlink target not found");
-                } else {
-                    warn!(filename=%filename_display, "symlink loop detected");
-                }
-                None
+                    MetaExtra::Regular { blake2b_hash } => break 'outer Some(blake2b_hash),
+                };
             }
-            MetaExtra::Regular { blake2b_hash } => Some(blake2b_hash),
         };
+
+        let ancestors = key
+            .ancestors()
+            .filter(|ancestor| !ancestor.as_os_str().is_empty())
+            .map(|ancestor| (ancestor, key.strip_prefix(ancestor).expect("ancestor")));
+        for (prefix, remaining) in ancestors {
+            let target_dir = try_resolve_dir_symlink(conn, redis_index, prefix).await?;
+            if let Some(target_dir) = target_dir {
+                // Only possible if prefix is a symlink points to a directory.
+                let new_loc = target_dir.join(remaining).clean();
+                if !visited.insert(new_loc.clone()) {
+                    warn!(filename = %original_key.display(), "symlink loop detected");
+                    break 'outer None;
+                }
+                // new_loc can not be absolute because prefix is not absolute (filtered by
+                // `follow_symlink_dir`).
+                if new_loc.starts_with("..") {
+                    warn!(
+                        prefix=%prefix.display(),
+                        remaining=%remaining.display(),
+                        "path starts with .., refusing to follow"
+                    );
+                    continue;
+                }
+
+                guard_depth!(depth, original_key);
+                let meta: Option<Metadata> = conn
+                    .hget(redis_index, new_loc.as_os_str().as_bytes())
+                    .await?;
+                key = new_loc;
+                maybe_meta_extra = meta.map(|meta| meta.extra);
+
+                continue 'outer;
+            }
+        }
+        break None;
+    };
+    Ok(hash)
+}
+
+pub async fn recursive_resolve_dir_symlink(
+    conn: &mut (impl aio::ConnectionLike + Send),
+    redis_index: &str,
+    key: &Path,
+) -> Result<PathBuf> {
+    let mut visited = HashSet::new();
+
+    let mut key = key.to_path_buf();
+    let mut depth = 0;
+
+    loop {
+        if !visited.insert(key.clone()) {
+            warn!(filename = %key.display(), "symlink loop detected");
+            return Ok(key);
+        }
+        depth += 1;
+        if depth > MAX_SYMLINK_LOOKUP {
+            warn!("symlink lookup depth exceeded");
+            return Ok(key);
+        }
+
+        if let Some(k) = try_resolve_dir_symlink(conn, redis_index, &key).await? {
+            key = k;
+            continue;
+        }
+        break;
+    }
+
+    Ok(key)
+}
+
+async fn try_resolve_dir_symlink(
+    conn: &mut (impl aio::ConnectionLike + Send),
+    redis_index: &str,
+    key: &Path,
+) -> Result<Option<PathBuf>> {
+    if key.is_absolute() {
+        warn!(filename=%key.display(), "absolute path is not supported, refusing to follow");
+        return Ok(None);
+    }
+    if key.starts_with("..") {
+        warn!(filename=%key.display(), "path starts with .., refusing to follow");
+        return Ok(None);
+    }
+
+    let pwd = key.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
+
+    let Some(metadata): Option<Metadata> = conn.hget(redis_index, key.as_os_str().as_bytes()).await? else {
+        return Ok(None);
+    };
+    let target = match metadata.extra {
+        MetaExtra::Symlink { ref target } => {
+            let path = Path::new(OsStr::from_bytes(target));
+            let new_loc = pwd.join(path).clean();
+
+            Some(new_loc)
+        }
+        MetaExtra::Regular { .. } => {
+            warn!(filename=%key.display(), "expected dir, got file");
+            None
+        }
     };
 
-    Ok(hash)
+    Ok(target)
 }

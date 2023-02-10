@@ -23,12 +23,10 @@ const PATH_MAX: u32 = 4096;
 
 #[derive(Clone)]
 pub struct FileEntry {
-    // maybe PathBuf?
     pub name: Vec<u8>,
     pub len: u64,
     pub modify_time: SystemTime,
     pub mode: u32,
-    // maybe PathBuf?
     pub link_target: Option<Vec<u8>>,
     // int32 in rsync, but it couldn't be negative yes?
     pub idx: u32,

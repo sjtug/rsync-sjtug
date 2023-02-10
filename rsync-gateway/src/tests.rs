@@ -9,7 +9,7 @@ use actix_web::{test, web, App};
 
 use rsync_core::metadata::Metadata;
 use rsync_core::tests::{generate_random_namespace, redis_client, MetadataIndex};
-use rsync_core::utils::ToHex;
+use rsync_core::utils::{test_init_logger, ToHex};
 
 use crate::handler;
 use crate::opts::Opts;
@@ -17,6 +17,8 @@ use crate::state::State;
 
 #[tokio::test]
 async fn integration_test() {
+    test_init_logger();
+
     let namespace = generate_random_namespace();
     let client = redis_client();
 
@@ -35,6 +37,19 @@ async fn integration_test() {
                 Metadata::regular(0, UNIX_EPOCH, [2; 20]),
             ),
             ("intérêt".into(), Metadata::regular(0, UNIX_EPOCH, [3; 20])),
+            ("h/i".into(), Metadata::symlink(0, UNIX_EPOCH, "../m/n/o")),
+            ("m/n".into(), Metadata::symlink(0, UNIX_EPOCH, "../p")),
+            ("p/o/j".into(), Metadata::symlink(0, UNIX_EPOCH, "./")),
+            (
+                "p/o/k".into(),
+                Metadata::symlink(0, UNIX_EPOCH, "../../v/w/"),
+            ),
+            ("v/w/a".into(), Metadata::regular(0, UNIX_EPOCH, [4; 20])),
+            ("v/w/l".into(), Metadata::symlink(0, UNIX_EPOCH, "a")),
+            (
+                "z".into(),
+                Metadata::symlink(0, UNIX_EPOCH, "h/i/j/j/j/k/l"),
+            ),
         ],
     );
 
@@ -86,13 +101,15 @@ async fn integration_test() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
     // Should follow symlinks.
-    let req = test::TestRequest::get().uri("/a/c").to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
-    assert_eq!(
-        resp.headers().get("Location").unwrap(),
-        &format!("http://s3/{:x}", [1; 20].as_hex())
-    );
+    for (uri, hash) in [("/a/c", [1; 20]), ("/z", [4; 20])] {
+        let req = test::TestRequest::get().uri(uri).to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            resp.headers().get("Location").unwrap(),
+            &format!("http://s3/{:x}", hash.as_hex())
+        );
+    }
 
     // Circular symlinks should return 404.
     let req = test::TestRequest::get().uri("/e").to_request();

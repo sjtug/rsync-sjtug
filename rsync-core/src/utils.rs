@@ -2,6 +2,7 @@ use std::fmt::LowerHex;
 
 #[cfg(feature = "percent-encoding")]
 use percent_encoding::{AsciiSet, CONTROLS};
+use tracing::level_filters::LevelFilter;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -22,6 +23,15 @@ pub const PATH_ASCII_SET: &AsciiSet = &CONTROLS
 pub fn init_logger() {
     tracing_subscriber::Registry::default()
         .with(EnvFilter::from_default_env())
+        .with(ErrorLayer::default())
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .init();
+}
+
+#[cfg(feature = "tests")]
+pub fn test_init_logger() {
+    tracing_subscriber::Registry::default()
+        .with(LevelFilter::DEBUG)
         .with(ErrorLayer::default())
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .init();
