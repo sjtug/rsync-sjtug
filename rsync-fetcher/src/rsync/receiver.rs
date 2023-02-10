@@ -110,10 +110,7 @@ impl Receiver {
             // Intended sign loss.
             #[allow(clippy::cast_sign_loss)]
             let idx = idx as usize;
-            self.recv_file(idx).await?;
-
-            let entry = &self.file_list[idx];
-            pb.inc(entry.len);
+            self.recv_file(idx, &pb).await?;
         }
 
         info!("recv finish");
@@ -121,7 +118,7 @@ impl Receiver {
     }
 
     #[instrument(skip(self))]
-    async fn recv_file(&mut self, idx: usize) -> Result<()> {
+    async fn recv_file(&mut self, idx: usize, pb: &ProgressBar) -> Result<()> {
         let entry = &self.file_list[idx];
         debug!(file=%entry.name_lossy(), "receive file");
 
@@ -133,7 +130,7 @@ impl Receiver {
         let RecvResult {
             target_file,
             blake2b_hash,
-        } = self.recv_data(basis_file).await?;
+        } = self.recv_data(basis_file, pb).await?;
 
         // Upload file to S3.
         self.upload_s3(target_file, &blake2b_hash).await?;
@@ -158,7 +155,11 @@ impl Receiver {
         })?)
     }
 
-    async fn recv_data(&mut self, mut local_basis: Option<File>) -> Result<RecvResult> {
+    async fn recv_data(
+        &mut self,
+        mut local_basis: Option<File>,
+        pb: &ProgressBar,
+    ) -> Result<RecvResult> {
         let SumHead {
             checksum_count,
             block_len,
@@ -180,6 +181,8 @@ impl Receiver {
             match token {
                 FileToken::Data(data) => {
                     transferred += data.len() as u64;
+                    pb.inc(data.len() as u64);
+
                     md4_hasher.update(&data);
                     blake2b_hasher.update(&data);
                     target_file.write_all(&data).await?;
@@ -195,6 +198,7 @@ impl Receiver {
                             block_len
                         };
                     copied += data_len as u64;
+                    pb.inc(data_len as u64);
 
                     let mut buf = vec![0; data_len as usize];
                     let local_basis = local_basis.as_mut().expect("incremental");
