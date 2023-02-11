@@ -3,6 +3,7 @@ use url::Url;
 
 use rsync_core::redis_::RedisOpts;
 use rsync_core::s3::S3Opts;
+use rsync_core::utils::parse_ensure_end_slash;
 
 const LOCK_TIMEOUT: u64 = 3 * 60;
 
@@ -27,7 +28,7 @@ pub struct Opts {
     #[clap(long)]
     pub s3_bucket: String,
     /// S3 storage prefix.
-    #[clap(long)]
+    #[clap(long, value_parser = parse_ensure_end_slash)]
     pub s3_prefix: String,
     /// Metadata storage url. (Redis)
     #[clap(long)]
@@ -43,16 +44,11 @@ pub struct Opts {
 
 impl From<&Opts> for S3Opts {
     fn from(opts: &Opts) -> Self {
-        let prefix = if opts.s3_prefix.ends_with('/') {
-            opts.s3_prefix.clone()
-        } else {
-            format!("{}/", opts.s3_prefix)
-        };
         Self {
             region: opts.s3_region.clone(),
             url: opts.s3_url.clone(),
             bucket: opts.s3_bucket.clone(),
-            prefix,
+            prefix: opts.s3_prefix.clone(),
         }
     }
 }

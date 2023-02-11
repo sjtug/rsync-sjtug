@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use std::fmt::LowerHex;
 
 #[cfg(feature = "percent-encoding")]
@@ -57,4 +58,12 @@ impl LowerHex for HexWrapper<'_> {
         }
         Ok(())
     }
+}
+
+pub fn parse_ensure_end_slash(s: &str) -> Result<String, Infallible> {
+    Ok(if s.ends_with('/') {
+        s.to_string()
+    } else {
+        format!("{s}/")
+    })
 }
