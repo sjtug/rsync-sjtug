@@ -1,0 +1,12 @@
+bind = ["127.0.0.1:8080", "[::1]:8080"]
+update_interval = 300
+
+[endpoints.fedora]
+s3_website = "http://s3/bucket/fedora"
+redis = "redis://localhost:6379/0"
+redis_namespace = "fedora"
+
+[endpoints.debian]
+s3_website = "http://s3/bucket/debian"
+redis = "redis://localhost:6379/0"
+redis_namespace = "debian"

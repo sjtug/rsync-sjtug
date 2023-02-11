@@ -34,11 +34,19 @@ versions older than 2.6.0 are supported.
     ```
 2. Serve the repository over HTTP.
     ```bash
-    $ RUST_LOG=info RUST_BACKTRACE=1 \
-      rsync-gateway 127.0.0.1:8081 \
-        --s3-base http://s3_http_url \
-        --redis redis://localhost --redis-namespace repo_name
+    $ cat > config.toml <<-EOF
+    bind = ["localhost:8081"]
+
+    [endpoints."out"]
+    redis = "redis://localhost"
+    redis_namespace = "test"
+    s3_website = "http://localhost:8080/test/test-prefix"
+   
+    EOF
+
+    $ RUST_LOG=info RUST_BACKTRACE=1 rsync-gateway <optional config file>
     ```
+
 3. GC old versions of files periodically.
     ```bash
     $ RUST_LOG=info RUST_BACKTRACE=1 AWS_ACCESS_KEY_ID=<ID> AWS_SECRET_ACCESS_KEY=<KEY> \
@@ -47,7 +55,7 @@ versions older than 2.6.0 are supported.
         --redis redis://localhost --redis-namespace repo_name \ 
         --keep 2
     ```
-    > It's recommended to keep at least 2 versions of files in case a gateway is still using an old revision.
+   > It's recommended to keep at least 2 versions of files in case a gateway is still using an old revision.
 
 ## Design
 

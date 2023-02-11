@@ -1,50 +1,58 @@
-use actix_web::web::{Data, Redirect};
-use actix_web::{Either, HttpRequest, HttpResponse, Responder};
-use bstr::{BStr, ByteSlice};
+use actix_web::web::{Data, Path, Redirect};
+use actix_web::{Either, HttpResponse, Responder};
+use bstr::BStr;
 use tracing::debug;
 
 use rsync_core::utils::{ToHex, PATH_ASCII_SET};
 
-use crate::opts::Opts;
+use crate::opts::Endpoint;
 use crate::state::State;
 use crate::utils::{ReportExt, ReportWrapper};
 
 /// Main handler.
-pub async fn handler(opts: Data<Opts>, state: Data<State>, req: HttpRequest) -> impl Responder {
-    let path: Vec<_> = percent_encoding::percent_decode(req.path().as_bytes()).collect();
+pub async fn handler(
+    endpoint: Data<Endpoint>,
+    state: Data<State>,
+    path: Path<String>,
+) -> impl Responder {
+    let path: Vec<_> = percent_encoding::percent_decode(path.as_bytes()).collect();
 
     debug!(path=?BStr::new(&path), "incoming request");
 
-    let listing = path.ends_with(b"/");
-    let path = path.trim_start_with(|c| c == '/');
+    let listing = path.ends_with(b"/") || path.is_empty();
     if listing {
-        Either::Left(listing_handler(&opts, &state, path).await)
+        Either::Left(listing_handler(&endpoint, &state, &path).await)
     } else {
-        Either::Right(file_handler(&opts, &state, path).await)
+        Either::Right(file_handler(&endpoint, &state, &path).await)
     }
 }
 
 /// Handler for listing requests.
-async fn listing_handler(opts: &Opts, state: &State, path: &[u8]) -> impl Responder {
+async fn listing_handler(endpoint: &Endpoint, state: &State, path: &[u8]) -> impl Responder {
     let path = state.resolve_dir(path).await.into_resp_err()?;
     Ok::<_, ReportWrapper>(state.latest_index().map_or_else(
         || Either::Right(HttpResponse::NotFound()),
         |latest| {
             let path = percent_encoding::percent_encode(&path, PATH_ASCII_SET);
-            let s3_base = opts.s3_base.trim_end_matches('/');
             Either::Left(Redirect::to(format!(
-                "{s3_base}/listing-{latest}/{path}index.html"
+                "{}/listing-{latest}/{path}index.html",
+                endpoint.s3_website
             )))
         },
     ))
 }
 
 /// Handler for file requests.
-async fn file_handler(opts: &Opts, state: &State, path: &[u8]) -> impl Responder {
-    let s3_base = opts.s3_base.trim_end_matches('/');
+async fn file_handler(endpoint: &Endpoint, state: &State, path: &[u8]) -> impl Responder {
     let hash = state.lookup_hash_of_path(path).await.into_resp_err()?;
     Ok::<_, ReportWrapper>(hash.map_or_else(
         || Either::Right(HttpResponse::NotFound()),
-        |hash| Either::Left(Redirect::to(format!("{s3_base}/{:x}", hash.as_hex()))),
+        |hash| {
+            Either::Left(Redirect::to(format!(
+                "{}/{:x}",
+                endpoint.s3_website,
+                hash.as_hex()
+            )))
+        },
     ))
 }

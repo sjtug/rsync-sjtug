@@ -1,19 +1,16 @@
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
 use actix_web::http::StatusCode;
 use actix_web::middleware::{NormalizePath, TrailingSlash};
-use actix_web::web::Data;
-use actix_web::{test, web, App};
+use actix_web::{test, App};
+use maplit::btreemap;
 
 use rsync_core::metadata::Metadata;
 use rsync_core::tests::{generate_random_namespace, redis_client, MetadataIndex};
 use rsync_core::utils::{test_init_logger, ToHex};
 
-use crate::handler;
-use crate::opts::Opts;
-use crate::state::State;
+use crate::app::configure;
+use crate::opts::{Endpoint, Opts};
 
 #[tokio::test]
 async fn integration_test() {
@@ -55,28 +52,22 @@ async fn integration_test() {
 
     let redis_url = option_env!("TEST_REDIS_URL").unwrap_or("redis://localhost");
     let opts = Opts {
-        bind: String::new(),
-        s3_base: "http://s3".to_string(),
-        redis: redis_url.parse().unwrap(),
-        redis_namespace: namespace.clone(),
+        bind: vec![],
         update_interval: 999,
+        endpoints: btreemap! {
+            String::new() =>
+            Endpoint {
+                s3_website: "http://s3".to_string(),
+                redis: redis_url.parse().unwrap(),
+                redis_namespace: namespace.clone(),
+            },
+        },
     };
+    let cfg = configure(&opts).await.unwrap();
     let app = test::init_service(
         App::new()
             .wrap(NormalizePath::new(TrailingSlash::MergeOnly))
-            .app_data(Data::new(opts))
-            .data_factory(move || {
-                let namespace = namespace.clone();
-                async move {
-                    let client = redis_client();
-                    Ok::<_, ()>(State::new(
-                        client.get_multiplexed_tokio_connection().await.unwrap(),
-                        namespace.clone(),
-                        Arc::new(AtomicU64::new(42)),
-                    ))
-                }
-            })
-            .service(web::resource("/{path:.*}").to(handler::handler)),
+            .configure(cfg),
     )
     .await;
 

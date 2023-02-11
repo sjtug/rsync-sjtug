@@ -18,11 +18,14 @@ percent-encoding = "2.2"
 redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"] }
 rsync-core = { path = "../rsync-core", features = ["percent-encoding"] }
 scan_fmt = "0.2"
+serde = { version = "1.0", features = ["derive"] }
 tap = "1.0"
 tokio = { version = "1.25", features = ["rt"] }
+toml = "0.7"
 tracing = "0.1"
 tracing-actix-web = "0.7"
-url = "2.3"
+url = { version = "2.3", features = ["serde"] }
 
 [dev-dependencies]
+maplit = "1.0"
 rsync-core = { path = "../rsync-core", features = ["tests"] }

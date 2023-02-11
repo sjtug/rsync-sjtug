@@ -23,7 +23,7 @@ use crate::utils::AbortJoinHandle;
 
 /// Per-thread state.
 pub struct State {
-    // Although it's a multiplexed connection, we only use it in a single thread.
+    // Each repository has its own connection.
     conn: aio::MultiplexedConnection,
     namespace: String,
     // Zero stands for not found.
