@@ -338,6 +338,14 @@ macro_rules! guard_depth {
     };
 }
 
+#[derive(Debug, Clone)]
+pub enum Target {
+    /// A regular file.
+    File([u8; 20]),
+    /// A directory.
+    Directory(Vec<u8>),
+}
+
 #[allow(unreachable_code)]
 /// Follow a symlink and return the hash of the target.
 /// Only works on files.
@@ -353,7 +361,7 @@ pub async fn follow_symlink(
     redis_index: &str,
     key: &Path,
     mut maybe_meta_extra: Option<MetaExtra>,
-) -> Result<Option<[u8; 20]>> {
+) -> Result<Option<Target>> {
     let mut depth = 0;
 
     if key.is_absolute() {
@@ -369,10 +377,15 @@ pub async fn follow_symlink(
 
     let mut visited = HashSet::new();
     let mut key = key.to_path_buf();
-    let hash = 'outer: loop {
+    let target = 'outer: loop {
+        let mut basename = key.file_name().unwrap_or_else(|| OsStr::new("")).to_owned();
         let mut pwd = key.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
 
         // This loop only resolves the symlink if there's no directory symlink in the path.
+        // i.e. if the path is a/b/c/d, and a/b -> c, then this loop can't resolve it.
+        // And this loop tries its best to resolve the symlink even if it finally fails.
+        // e.g. z -> a/b/c/d, a/b -> c, then this loop will resolve z to a/b/c/d and won't break to
+        // outer.
         if let Some(mut meta_extra) = maybe_meta_extra.take() {
             loop {
                 match meta_extra {
@@ -393,12 +406,23 @@ pub async fn follow_symlink(
 
                         let new_meta: Metadata = new_meta;
                         meta_extra = new_meta.extra;
+                        basename = new_loc
+                            .file_name()
+                            .unwrap_or_else(|| OsStr::new(""))
+                            .to_owned();
                         pwd = new_loc
                             .parent()
                             .unwrap_or_else(|| Path::new(""))
                             .to_path_buf();
                     }
-                    MetaExtra::Regular { blake2b_hash } => break 'outer Some(blake2b_hash),
+                    MetaExtra::Regular { blake2b_hash } => {
+                        break 'outer Some(Target::File(blake2b_hash))
+                    }
+                    MetaExtra::Directory => {
+                        break 'outer Some(Target::Directory(
+                            pwd.join(basename).as_os_str().as_bytes().to_vec(),
+                        ))
+                    }
                 };
             }
         };
@@ -408,7 +432,7 @@ pub async fn follow_symlink(
             .filter(|ancestor| !ancestor.as_os_str().is_empty())
             .map(|ancestor| (ancestor, key.strip_prefix(ancestor).expect("ancestor")));
         for (prefix, remaining) in ancestors {
-            let target_dir = try_resolve_dir_symlink(conn, redis_index, prefix).await?;
+            let target_dir = try_resolve_once(conn, redis_index, prefix).await?;
             if let Some(target_dir) = target_dir {
                 // Only possible if prefix is a symlink points to a directory.
                 let new_loc = target_dir.join(remaining).clean();
@@ -439,7 +463,7 @@ pub async fn follow_symlink(
         }
         break None;
     };
-    Ok(hash)
+    Ok(target)
 }
 
 pub async fn recursive_resolve_dir_symlink(
@@ -463,7 +487,7 @@ pub async fn recursive_resolve_dir_symlink(
             return Ok(key);
         }
 
-        if let Some(k) = try_resolve_dir_symlink(conn, redis_index, &key).await? {
+        if let Some(k) = dbg!(try_resolve_once(conn, redis_index, &key).await?) {
             key = k;
             continue;
         }
@@ -473,7 +497,8 @@ pub async fn recursive_resolve_dir_symlink(
     Ok(key)
 }
 
-async fn try_resolve_dir_symlink(
+#[instrument(skip(conn))]
+async fn try_resolve_once(
     conn: &mut (impl aio::ConnectionLike + Send),
     redis_index: &str,
     key: &Path,
@@ -500,7 +525,11 @@ async fn try_resolve_dir_symlink(
             Some(new_loc)
         }
         MetaExtra::Regular { .. } => {
-            warn!(filename=%key.display(), "expected dir, got file");
+            warn!(filename=%key.display(), "expected symlink, got file");
+            None
+        }
+        MetaExtra::Directory => {
+            warn!(filename=%key.display(), "expected symlink, got dir");
             None
         }
     };

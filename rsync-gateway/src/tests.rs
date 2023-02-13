@@ -23,24 +23,33 @@ async fn integration_test() {
         &client,
         &format!("{namespace}:index:42"),
         &[
+            ("a".into(), Metadata::directory(0, UNIX_EPOCH)),
             ("a/b".into(), Metadata::regular(0, UNIX_EPOCH, [0; 20])),
             ("a/c".into(), Metadata::symlink(0, UNIX_EPOCH, "../d")),
             ("d".into(), Metadata::regular(0, UNIX_EPOCH, [1; 20])),
             ("e".into(), Metadata::symlink(0, UNIX_EPOCH, "f")),
             ("f".into(), Metadata::symlink(0, UNIX_EPOCH, "e")),
-            ("g".into(), Metadata::symlink(0, UNIX_EPOCH, "h")),
+            ("g".into(), Metadata::symlink(0, UNIX_EPOCH, "broken")),
             (
                 "你好 世界".into(),
                 Metadata::regular(0, UNIX_EPOCH, [2; 20]),
             ),
+            ("你好 世界2".into(), Metadata::directory(0, UNIX_EPOCH)),
             ("intérêt".into(), Metadata::regular(0, UNIX_EPOCH, [3; 20])),
+            ("intérêt2".into(), Metadata::directory(0, UNIX_EPOCH)),
+            ("h".into(), Metadata::directory(0, UNIX_EPOCH)),
             ("h/i".into(), Metadata::symlink(0, UNIX_EPOCH, "../m/n/o")),
+            ("m".into(), Metadata::directory(0, UNIX_EPOCH)),
             ("m/n".into(), Metadata::symlink(0, UNIX_EPOCH, "../p")),
+            ("p".into(), Metadata::directory(0, UNIX_EPOCH)),
+            ("p/o".into(), Metadata::directory(0, UNIX_EPOCH)),
             ("p/o/j".into(), Metadata::symlink(0, UNIX_EPOCH, "./")),
             (
                 "p/o/k".into(),
                 Metadata::symlink(0, UNIX_EPOCH, "../../v/w/"),
             ),
+            ("v".into(), Metadata::directory(0, UNIX_EPOCH)),
+            ("v/w".into(), Metadata::directory(0, UNIX_EPOCH)),
             ("v/w/a".into(), Metadata::regular(0, UNIX_EPOCH, [4; 20])),
             ("v/w/l".into(), Metadata::symlink(0, UNIX_EPOCH, "a")),
             (
@@ -66,7 +75,7 @@ async fn integration_test() {
     let cfg = configure(&opts).await.unwrap();
     let app = test::init_service(
         App::new()
-            .wrap(NormalizePath::new(TrailingSlash::MergeOnly))
+            .wrap(NormalizePath::new(TrailingSlash::Trim))
             .configure(cfg),
     )
     .await;
@@ -91,7 +100,7 @@ async fn integration_test() {
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
-    // Should follow symlinks.
+    // Should follow symlinks to files.
     for (uri, hash) in [("/a/c", [1; 20]), ("/z", [4; 20])] {
         let req = test::TestRequest::get().uri(uri).to_request();
         let resp = test::call_service(&app, req).await;
@@ -99,6 +108,17 @@ async fn integration_test() {
         assert_eq!(
             resp.headers().get("Location").unwrap(),
             &format!("http://s3/{:x}", hash.as_hex())
+        );
+    }
+
+    // Should follow symlinks to dirs.
+    for (uri, path) in [("/m/n", "p"), ("/h/i/j/j/j/k", "v/w")] {
+        let req = test::TestRequest::get().uri(uri).to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            resp.headers().get("Location").unwrap(),
+            &format!("http://s3/listing-42/{path}/index.html")
         );
     }
 
@@ -123,12 +143,12 @@ async fn integration_test() {
 
     // Listing subdirectories.
     for (uri, href) in [
-        ("/a/", "a/index.html"),
+        ("/a", "a/index.html"),
         (
-            "/%E4%BD%A0%E5%A5%BD%20%E4%B8%96%E7%95%8C/",
-            "%E4%BD%A0%E5%A5%BD%20%E4%B8%96%E7%95%8C/index.html",
+            "/%E4%BD%A0%E5%A5%BD%20%E4%B8%96%E7%95%8C2",
+            "%E4%BD%A0%E5%A5%BD%20%E4%B8%96%E7%95%8C2/index.html",
         ),
-        ("/int%C3%A9r%C3%AAt/", "int%C3%A9r%C3%AAt/index.html"),
+        ("/int%C3%A9r%C3%AAt2", "int%C3%A9r%C3%AAt2/index.html"),
     ] {
         let req = test::TestRequest::get().uri(uri).to_request();
         let resp = test::call_service(&app, req).await;

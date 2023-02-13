@@ -135,7 +135,10 @@ pub async fn generate_transfer_plan(
                             // We book the old hash so that we may download the file on s3 and perform delta
                             // transfer.
                             let blake2b_hash = match metadata.extra {
-                                MetaExtra::Symlink { .. } => None,
+                                // Although symlinks and dirs don't need to be downloaded,
+                                // they are still considered as "remote" files and are used
+                                // to update symlink and dir metadata.
+                                MetaExtra::Symlink { .. } | MetaExtra::Directory => None,
                                 MetaExtra::Regular { blake2b_hash } => {
                                     (!no_delta).then_some(blake2b_hash)
                                 }

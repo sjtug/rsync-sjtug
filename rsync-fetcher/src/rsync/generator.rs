@@ -98,9 +98,15 @@ impl Generator {
             return Ok(());
         }
 
-        // We skip all non-regular files. Symlinks are skipped too.
+        // We skip all non-regular files, including directories and symlinks.
         if !unix_mode::is_file(entry.mode) {
-            warn!(?path, "skip non-regular file");
+            if !unix_mode::is_symlink(entry.mode) || !unix_mode::is_dir(entry.mode) {
+                warn!(
+                    ?path,
+                    mode = format!("{:o}", entry.mode),
+                    "skip special file"
+                );
+            }
             return Ok(());
         }
 

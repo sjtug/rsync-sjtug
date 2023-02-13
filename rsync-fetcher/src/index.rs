@@ -16,7 +16,7 @@ use itertools::Itertools;
 use redis::AsyncCommands;
 
 use rsync_core::metadata::Metadata;
-use rsync_core::redis_::follow_symlink;
+use rsync_core::redis_::{follow_symlink, Target};
 use rsync_core::s3::S3Opts;
 use rsync_core::utils::{ToHex, PATH_ASCII_SET};
 
@@ -25,11 +25,14 @@ const MAX_DEPTH: usize = 64;
 #[derive(Debug, Default)]
 pub struct Index {
     prefixes: BTreeMap<String, Index>,
-    objects: BTreeMap<String, [u8; 20]>,
+    objects: BTreeMap<String, Target>,
 }
 
 impl Index {
-    fn insert(&mut self, path: &str, hash: [u8; 20], remaining_depth: usize) {
+    fn insert(&mut self, path: &str, hash: Target, remaining_depth: usize) {
+        if path == "." {
+            return;
+        }
         if remaining_depth == 0 {
             self.objects.insert(path.to_string(), hash);
         } else {
@@ -85,11 +88,18 @@ impl Index {
     </ol>
 </nav>
         "#,
-            items.join("\n")
+            items.join("")
         )
     }
 
-    fn index_for(&self, prefix: &str, breadcrumb: &[&str], list_key: &str, now: &str) -> String {
+    fn index_for(
+        &self,
+        prefix: &str,
+        breadcrumb: &[&str],
+        list_key: &str,
+        now: &str,
+        gateway_base: &str,
+    ) -> String {
         if prefix.is_empty() {
             let mut data = String::new();
 
@@ -100,32 +110,40 @@ impl Index {
             let navbar = Self::generate_navbar(breadcrumb, list_key);
             let to_root = "../".repeat(breadcrumb.len());
 
-            data += &format!(r#"<tr><td><a href="../{list_key}">..</a></td></tr>"#);
-            data += &self
+            let dirs = self
                 .prefixes
                 .keys()
-                .map(|key| {
-                    format!(
-                        r#"<tr><td><a href="{}/{}">{}/</a></td></tr>"#,
-                        percent_encoding::utf8_percent_encode(key, PATH_ASCII_SET),
-                        list_key,
-                        html_escape::encode_text(key)
-                    )
-                })
-                .join("\n");
-            data += "\n";
-            data += &self
-                .objects
-                .iter()
-                .map(|(key, hash)| {
-                    let href = format!("{to_root}{:x}", hash.as_hex());
-                    format!(
-                        r#"<tr><td><a href="{}">{}</a></td></tr>"#,
-                        href,
-                        html_escape::encode_text(key)
-                    )
-                })
-                .join("\n");
+                .map(|k| (k, format!("{k}/{list_key}")))
+                .chain(self.objects.iter().filter_map(|(k, v)| match v {
+                    Target::Directory(path) => Some((
+                        k,
+                        format!("{gateway_base}{}", String::from_utf8_lossy(path)),
+                    )),
+                    Target::File(_) => None,
+                }))
+                .sorted_by_key(|(k, _)| k.to_lowercase())
+                .dedup_by(|(k1, _), (k2, _)| k1.eq_ignore_ascii_case(k2));
+            let files = self.objects.iter().filter_map(|(k, v)| match v {
+                Target::File(hash) => Some((k, hash)),
+                Target::Directory(_) => None,
+            });
+
+            data += &format!(r#"<tr><td><a href="../{list_key}">..</a></td></tr>"#);
+            for (key, href) in dirs {
+                data += &format!(
+                    r#"<tr><td><a href="{}">{}/</a></td></tr>"#,
+                    percent_encoding::utf8_percent_encode(&href, PATH_ASCII_SET),
+                    html_escape::encode_text(key)
+                );
+            }
+            for (key, hash) in files {
+                let href = format!("{to_root}{:x}", hash.as_hex());
+                data += &format!(
+                    r#"<tr><td><a href="{}">{}</a></td></tr>"#,
+                    href,
+                    html_escape::encode_text(key)
+                );
+            }
             format!(
                 r#"
 <!doctype html>
@@ -157,10 +175,13 @@ impl Index {
         } else if let Some((parent, rest)) = prefix.split_once('/') {
             let mut breadcrumb = breadcrumb.to_vec();
             breadcrumb.push(parent);
-            self.prefixes
-                .get(parent)
-                .unwrap()
-                .index_for(rest, &breadcrumb, list_key, now)
+            self.prefixes.get(parent).unwrap().index_for(
+                rest,
+                &breadcrumb,
+                list_key,
+                now,
+                gateway_base,
+            )
         } else {
             panic!("unsupported prefix {prefix}");
         }
@@ -184,12 +205,9 @@ async fn generate_index(
         let filename = String::from_utf8_lossy(&key);
 
         let key = Path::new(OsStr::from_bytes(&key));
-        // TODO if key points to a directory, it's ignored.
-        // i.e. symlinks to dirs are not present in the generated listing.
-        let hash = follow_symlink(&mut hget_conn, redis_index, key, Some(meta.extra)).await?;
-
-        if let Some(hash) = hash {
-            index.insert(&filename, hash, max_depth);
+        let target = follow_symlink(&mut hget_conn, redis_index, key, Some(meta.extra)).await?;
+        if let Some(target) = target {
+            index.insert(&filename, target, max_depth);
         }
     }
 
@@ -201,6 +219,7 @@ pub async fn generate_index_and_upload(
     redis_namespace: &str,
     s3_client: &aws_sdk_s3::Client,
     s3_opts: &S3Opts,
+    gateway_base: &str,
     repo_name: &str,
     timestamp: u64,
 ) -> Result<()> {
@@ -227,6 +246,7 @@ pub async fn generate_index_and_upload(
             &[repo_name],
             "index.html",
             &now,
+            gateway_base,
         );
         let stream = ByteStream::from(content.into_bytes());
         s3_client
@@ -304,7 +324,7 @@ mod tests {
         );
 
         let index = generate_index(&client, &test_index, 999).await.unwrap();
-        let content = index.index_for(prefix, &["test"], "list.html", "");
+        let content = index.index_for(prefix, &["test"], "list.html", "", "http://gateway/");
 
         for (key, href) in expected_files {
             let expected = format!(

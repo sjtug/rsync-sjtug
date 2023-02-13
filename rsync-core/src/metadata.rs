@@ -32,18 +32,32 @@ impl Metadata {
             },
         }
     }
+
+    #[must_use]
+    pub fn directory(len: u64, modify_time: SystemTime) -> Self {
+        Self {
+            len,
+            modify_time,
+            extra: MetaExtra::Directory,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
 pub enum MetaExtra {
     Symlink { target: Vec<u8> },
     Regular { blake2b_hash: [u8; 20] },
+    Directory,
 }
 
 impl MetaExtra {
     #[must_use]
     pub const fn regular(hash: [u8; 20]) -> Self {
         Self::Regular { blake2b_hash: hash }
+    }
+    #[must_use]
+    pub const fn directory() -> Self {
+        Self::Directory
     }
     #[must_use]
     pub fn symlink(target: &str) -> Self {

@@ -44,6 +44,10 @@ pub struct Opts {
     /// This name is used to identify the repository in listing files.
     #[clap(long)]
     pub repository: String,
+    /// Base URL of rsync-gateway.
+    /// Used to generate listing files.
+    #[clap(long, value_parser = parse_ensure_end_slash)]
+    pub gateway_base: String,
     /// Exclude files matching given pattern.
     #[clap(long, action = ArgAction::Append)]
     pub exclude: Vec<OsString>,

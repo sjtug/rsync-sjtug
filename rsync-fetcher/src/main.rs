@@ -23,7 +23,7 @@ use crate::index::generate_index_and_upload;
 use crate::opts::{Opts, RsyncOpts};
 use crate::plan::generate_transfer_plan;
 use crate::rsync::{finalize, start_handshake};
-use crate::symlink::apply_symlinks;
+use crate::symlink::apply_symlinks_n_directories;
 use crate::utils::timestamp;
 
 mod index;
@@ -112,7 +112,7 @@ async fn main() -> Result<()> {
     }
 
     // Update symlinks. No real files are transferred yet.
-    apply_symlinks(
+    apply_symlinks_n_directories(
         &mut redis_conn,
         &redis_opts,
         &file_list,
@@ -153,6 +153,7 @@ async fn main() -> Result<()> {
         &redis_namespace,
         &s3,
         &s3_opts,
+        &opts.gateway_base,
         &opts.repository,
         timestamp,
     )

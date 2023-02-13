@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use bstr::ByteSlice;
 use eyre::{bail, Result};
 use futures::{pin_mut, StreamExt, TryStreamExt};
 use redis::{aio, AsyncCommands, Client};
@@ -16,7 +17,7 @@ use tokio::time::interval;
 use tracing::{info, warn};
 
 use rsync_core::metadata::Metadata;
-use rsync_core::redis_::{follow_symlink, get_latest_index, recursive_resolve_dir_symlink};
+use rsync_core::redis_::{follow_symlink, get_latest_index, Target};
 
 use crate::utils::AbortJoinHandle;
 
@@ -49,7 +50,7 @@ impl State {
         NonZeroU64::new(self.latest_index.load(Ordering::Relaxed))
     }
     /// Lookup the hash of a path.
-    pub async fn lookup_hash_of_path(&self, key: &[u8]) -> Result<Option<[u8; 20]>> {
+    pub async fn lookup_target_of_path(&self, key: &[u8]) -> Result<Option<Target>> {
         let mut conn = self.conn.clone();
 
         let namespace = &self.namespace;
@@ -63,20 +64,6 @@ impl State {
         // We follow the symlink instead of redirecting the client to avoid circular redirection.
         let key = Path::new(OsStr::from_bytes(key));
         follow_symlink(&mut conn, &index, key, meta.map(|meta| meta.extra)).await
-    }
-    pub async fn resolve_dir(&self, key: &[u8]) -> Result<Vec<u8>> {
-        let mut conn = self.conn.clone();
-        let namespace = &self.namespace;
-        let index = if let Some(index) = self.latest_index() {
-            format!("{namespace}:index:{index}")
-        } else {
-            return Ok(key.to_vec());
-        };
-
-        let key = Path::new(OsStr::from_bytes(key));
-        recursive_resolve_dir_symlink(&mut conn, &index, key)
-            .await
-            .map(|p| p.into_os_string().into_vec())
     }
 }
 

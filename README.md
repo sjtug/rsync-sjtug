@@ -31,6 +31,7 @@ versions older than 2.6.0 are supported.
         --s3-url https://s3_api_endpoint --s3-region region --s3-bucket bucket --s3-prefix repo_name \
         --redis redis://localhost --redis-namespace repo_name \ 
         --repository repo_name
+        --gateway-base http://localhost:8081/repo_name
     ```
 2. Serve the repository over HTTP.
     ```bash

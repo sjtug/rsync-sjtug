@@ -4,7 +4,6 @@ use actix_web::web;
 use actix_web::web::{Data, ServiceConfig};
 use eyre::{Report, Result};
 use futures::future;
-use tap::Pipe;
 
 use crate::handler;
 use crate::opts::Opts;
@@ -13,13 +12,7 @@ use crate::state::{listen_for_updates, State};
 pub async fn configure(opts: &Opts) -> Result<impl Fn(&mut ServiceConfig) + Clone> {
     let prefix_state: Arc<Vec<_>> = Arc::new(
         future::try_join_all(opts.endpoints.iter().map(|(prefix, endpoint)| async {
-            let prefix = prefix.trim_end_matches('/').pipe(|prefix| {
-                if prefix.is_empty() {
-                    String::new()
-                } else {
-                    format!("{prefix}/")
-                }
-            });
+            let prefix = prefix.trim_end_matches('/').to_string();
             let redis = redis::Client::open(endpoint.redis.clone())?;
             let conn = redis.get_multiplexed_tokio_connection().await?;
             let (guard, latest_index) =
