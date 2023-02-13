@@ -27,7 +27,7 @@ pub struct State {
     namespace: String,
     // Zero stands for not found.
     latest_index: Arc<AtomicU64>,
-    update_guard: AbortJoinHandle<()>,
+    _update_guard: Arc<AbortJoinHandle<()>>,
 }
 
 impl State {
@@ -35,13 +35,13 @@ impl State {
         conn: aio::MultiplexedConnection,
         namespace: String,
         latest_index: Arc<AtomicU64>,
-        update_guard: AbortJoinHandle<()>,
+        update_guard: Arc<AbortJoinHandle<()>>,
     ) -> Self {
         Self {
             conn,
             namespace,
             latest_index,
-            update_guard,
+            _update_guard: update_guard,
         }
     }
     /// Get the latest index.

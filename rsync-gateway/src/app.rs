@@ -22,19 +22,26 @@ pub async fn configure(opts: &Opts) -> Result<impl Fn(&mut ServiceConfig) + Clon
             });
             let redis = redis::Client::open(endpoint.redis.clone())?;
             let conn = redis.get_multiplexed_tokio_connection().await?;
-            let (_guard, latest_index) =
+            let (guard, latest_index) =
                 listen_for_updates(&redis, &endpoint.redis_namespace, opts.update_interval).await?;
-            Ok::<_, Report>((prefix, Arc::new(endpoint.clone()), conn, latest_index))
+            Ok::<_, Report>((
+                prefix,
+                Arc::new(endpoint.clone()),
+                conn,
+                latest_index,
+                Arc::new(guard),
+            ))
         }))
         .await?,
     );
 
     Ok(assert_hrtb(move |cfg| {
-        for (prefix, endpoint, conn, latest_index) in &*prefix_state {
+        for (prefix, endpoint, conn, latest_index, guard) in &*prefix_state {
             let state = State::new(
                 conn.clone(),
                 endpoint.redis_namespace.clone(),
                 latest_index.clone(),
+                guard.clone(),
             );
             cfg.service(
                 web::resource(&format!("/{prefix}{{path:(.|/)*}}"))
