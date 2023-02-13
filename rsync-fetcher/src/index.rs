@@ -6,13 +6,13 @@ use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use aws_sdk_s3::types::ByteStream;
+use bytesize::ByteSize;
 use chrono::{DateTime, Utc};
 use eyre::Result;
 use indicatif::{ProgressBar, ProgressStyle};
-use itertools::Itertools;
 use redis::AsyncCommands;
 
 use rsync_core::metadata::Metadata;
@@ -22,30 +22,37 @@ use rsync_core::utils::{ToHex, PATH_ASCII_SET};
 
 const MAX_DEPTH: usize = 64;
 
+#[derive(Debug)]
+struct IndexEntry {
+    len: u64,
+    modify_time: SystemTime,
+    target: Target,
+}
+
 #[derive(Debug, Default)]
 pub struct Index {
     prefixes: BTreeMap<String, Index>,
-    objects: BTreeMap<String, Target>,
+    objects: BTreeMap<String, IndexEntry>,
 }
 
 impl Index {
-    fn insert(&mut self, path: &str, hash: Target, remaining_depth: usize) {
+    fn insert(&mut self, path: &str, entry: IndexEntry, remaining_depth: usize) {
         if path == "." {
             return;
         }
         if remaining_depth == 0 {
-            self.objects.insert(path.to_string(), hash);
+            self.objects.insert(path.to_string(), entry);
         } else {
             match path.split_once('/') {
                 Some((parent, rest)) => {
                     self.prefixes.entry(parent.to_string()).or_default().insert(
                         rest,
-                        hash,
+                        entry,
                         remaining_depth - 1,
                     );
                 }
                 None => {
-                    self.objects.insert(path.to_string(), hash);
+                    self.objects.insert(path.to_string(), entry);
                 }
             }
         }
@@ -103,45 +110,45 @@ impl Index {
         if prefix.is_empty() {
             let mut data = String::new();
 
-            let title = breadcrumb.last().map_or_else(
-                || String::from("Root"),
-                |x| html_escape::encode_text(x).to_string(),
-            );
+            let title = format!("Index of {}/", breadcrumb.join("/"));
             let navbar = Self::generate_navbar(breadcrumb, list_key);
             let to_root = "../".repeat(breadcrumb.len());
 
-            let dirs = self
-                .prefixes
-                .keys()
-                .map(|k| (k, format!("{k}/{list_key}")))
-                .chain(self.objects.iter().filter_map(|(k, v)| match v {
-                    Target::Directory(path) => Some((
-                        k,
-                        format!("{gateway_base}{}", String::from_utf8_lossy(path)),
-                    )),
-                    Target::File(_) => None,
-                }))
-                .sorted_by_key(|(k, _)| k.to_lowercase())
-                .dedup_by(|(k1, _), (k2, _)| k1.eq_ignore_ascii_case(k2));
-            let files = self.objects.iter().filter_map(|(k, v)| match v {
-                Target::File(hash) => Some((k, hash)),
+            let dirs = self.objects.iter().filter_map(|(k, v)| match &v.target {
+                Target::Directory(path) => Some((
+                    k,
+                    format!("{gateway_base}{}", String::from_utf8_lossy(path)),
+                    v.len,
+                    v.modify_time,
+                )),
+                Target::File(_) => None,
+            });
+            let files = self.objects.iter().filter_map(|(k, v)| match &v.target {
+                Target::File(hash) => Some((k, hash, v.len, v.modify_time)),
                 Target::Directory(_) => None,
             });
 
-            data += &format!(r#"<tr><td><a href="../{list_key}">..</a></td></tr>"#);
-            for (key, href) in dirs {
+            data += &format!(
+                r#"<tr><td><a href="../{list_key}">..</a></td><td class="text-right">—</td><td class="d-none d-sm-block text-right">—</td></tr>"#
+            );
+            for (key, href, _, modify_time) in dirs {
+                let dt = DateTime::<Utc>::from(modify_time);
                 data += &format!(
-                    r#"<tr><td><a href="{}">{}/</a></td></tr>"#,
+                    r#"<tr><td><a href="{}">{}/</a></td><td class="text-right">—</td><td class="d-none d-sm-block text-right">{}</td></tr>"#,
                     percent_encoding::utf8_percent_encode(&href, PATH_ASCII_SET),
-                    html_escape::encode_text(key)
+                    html_escape::encode_text(key),
+                    dt.format("%Y-%m-%d %H:%M:%S")
                 );
             }
-            for (key, hash) in files {
+            for (key, hash, len, modify_time) in files {
+                let dt = DateTime::<Utc>::from(modify_time);
                 let href = format!("{to_root}{:x}", hash.as_hex());
                 data += &format!(
-                    r#"<tr><td><a href="{}">{}</a></td></tr>"#,
+                    r#"<tr><td><a href="{}">{}</a></td><td class="text-right">{}</td><td class="d-none d-sm-block text-right">{}</td></tr>"#,
                     href,
-                    html_escape::encode_text(key)
+                    html_escape::encode_text(key),
+                    ByteSize::b(len),
+                    dt.format("%Y-%m-%d %H:%M:%S")
                 );
             }
             format!(
@@ -161,6 +168,13 @@ impl Index {
     <div class="container mt-3">
         {navbar}
         <table class="table table-sm table-borderless">
+            <thead>
+                <tr>
+                    <th class="w-50" scope="col">名称</th>
+                    <th class="w-25 text-right" scope="col">大小</th>
+                    <th class="text-right d-none d-sm-block" scope="col">修改时间</th>
+                </tr>
+            </thead>
             <tbody>
                 {data}
             </tbody>
@@ -207,7 +221,15 @@ async fn generate_index(
         let key = Path::new(OsStr::from_bytes(&key));
         let target = follow_symlink(&mut hget_conn, redis_index, key, Some(meta.extra)).await?;
         if let Some(target) = target {
-            index.insert(&filename, target, max_depth);
+            index.insert(
+                &filename,
+                IndexEntry {
+                    len: meta.len,
+                    modify_time: meta.modify_time,
+                    target,
+                },
+                max_depth,
+            );
         }
     }
 
@@ -325,16 +347,19 @@ mod tests {
 
         let index = generate_index(&client, &test_index, 999).await.unwrap();
         let content = index.index_for(prefix, &["test"], "list.html", "", "http://gateway/");
+        eprintln!("{}", content);
 
         for (key, href) in expected_files {
             let expected = format!(
-                r#"<tr><td><a href="{href}">{}</a></td></tr>"#,
+                r#"<tr><td><a href="{href}">{}</a></td><td class="text-right">0 B</td><td class="d-none d-sm-block text-right">1970-01-01 00:00:00</td></tr>"#,
                 html_escape::encode_text(key)
             );
             assert!(content.contains(&expected), "{expected} not found in index");
         }
         for (key, href) in expected_dirs {
-            let expected = format!(r#"<tr><td><a href="{href}/list.html">{key}</a></td></tr>"#,);
+            let expected = format!(
+                r#"<tr><td><a href="http://gateway/{href}">{key}</a></td><td class="text-right">—</td><td class="d-none d-sm-block text-right">1970-01-01 00:00:00</td></tr>"#,
+            );
             assert!(content.contains(&expected), "{expected} not found in index");
         }
     }
@@ -387,6 +412,7 @@ mod tests {
             &[
                 ("a", MetaExtra::regular([0; 20])),
                 ("b", MetaExtra::regular([1; 20])),
+                ("c", MetaExtra::directory()),
                 ("c/d", MetaExtra::regular([2; 20])),
             ],
             "",
@@ -405,8 +431,8 @@ mod tests {
             &[
                 ("你好 世界", MetaExtra::regular([0; 20])),
                 ("intérêt", MetaExtra::regular([1; 20])),
-                ("你好 世界/a", MetaExtra::regular([1; 20])),
-                ("intérêt/a", MetaExtra::regular([1; 20])),
+                ("你好 世界2", MetaExtra::directory()),
+                ("intérêt2", MetaExtra::directory()),
             ],
             "",
             &[
@@ -414,8 +440,8 @@ mod tests {
                 ("intérêt", &format!("../{:x}", &[1; 20].as_hex())),
             ],
             &[
-                ("你好 世界/", "%E4%BD%A0%E5%A5%BD%20%E4%B8%96%E7%95%8C"),
-                ("intérêt/", "int%C3%A9r%C3%AAt"),
+                ("你好 世界2/", "%E4%BD%A0%E5%A5%BD%20%E4%B8%96%E7%95%8C2"),
+                ("intérêt2/", "int%C3%A9r%C3%AAt2"),
             ],
         )
         .await;

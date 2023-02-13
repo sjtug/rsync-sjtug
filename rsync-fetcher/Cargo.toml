@@ -10,6 +10,7 @@ aws-config = "0.54"
 aws-sdk-s3 = "0.24"
 bincode = "2.0.0-rc.2"
 blake2 = "0.10"
+bytesize = "1.1"
 chrono = "0.4"
 clap = { version = "4.1", features = ["derive"] }
 clean-path = "0.2"
