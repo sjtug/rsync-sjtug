@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 use std::env;
 
-use eyre::{bail, ensure, Context, Result};
+use eyre::{bail, Context, Result};
 use serde::{Deserialize, Deserializer};
+use tracing::warn;
 use url::Url;
 
 /// Serves rsync repository on S3 over HTTP.
@@ -57,7 +58,9 @@ pub fn load_config() -> Result<Opts> {
 }
 
 pub fn validate_config(opts: &Opts) -> Result<()> {
-    ensure!(!opts.endpoints.is_empty(), "No endpoints configured");
+    if opts.endpoints.is_empty() {
+        warn!("No endpoints configured");
+    }
 
     if opts.endpoints.len() > 1
         && opts
