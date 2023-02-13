@@ -3,8 +3,7 @@ use std::future::ready;
 use std::num::NonZeroU64;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::Path;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -132,8 +131,8 @@ pub async fn listen_for_updates(
                     _ = interval.tick() => {
                         match get_latest_index(&mut conn, &namespace).await {
                             Ok(Some(idx)) => {
-                                info!(?idx, "update latest index");
-                                cell.store(idx, std::sync::atomic::Ordering::Relaxed);
+                                info!(?idx, namespace, "update latest index");
+                                cell.store(idx, Ordering::Relaxed);
                             },
                             Err(e) => warn!(?e, "failed to get latest index"),
                             _ => {}
@@ -142,7 +141,7 @@ pub async fn listen_for_updates(
                     Some(ev) = filtered.next() => {
                         match ev {
                             Ok(idx) => {
-                                info!(?idx, "update latest index");
+                                info!(?idx, namespace, "update latest index");
                                 cell.store(idx, Ordering::Relaxed);
                             },
                             Err(e) => warn!(?e, "failed to parse update event")
