@@ -3,40 +3,32 @@ use std::io::SeekFrom;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-use aws_sdk_s3::error::{HeadObjectError, HeadObjectErrorKind};
-use aws_sdk_s3::types::ByteStream;
 use blake2::Blake2b;
 use digest::consts::U20;
 use digest::Digest;
-use eyre::{ensure, Result};
+use eyre::{ensure, eyre, Result};
 use indicatif::ProgressBar;
 use md4::Md4;
-use redis::aio;
 use tempfile::{tempfile, TempDir};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 use tokio::net::tcp::OwnedReadHalf;
+use tokio::sync::mpsc;
 use tracing::{debug, info, instrument};
 
-use rsync_core::metadata::{MetaExtra, Metadata};
-use rsync_core::redis_::{update_metadata, RedisOpts};
-use rsync_core::s3::S3Opts;
-use rsync_core::utils::{ToHex, ATTR_CHAR};
+use rsync_core::utils::ToHex;
 
 use crate::rsync::checksum::SumHead;
 use crate::rsync::envelope::EnvelopeRead;
 use crate::rsync::file_list::FileEntry;
+use crate::rsync::uploader::UploadTask;
 use crate::utils::hash;
 
 pub struct Receiver {
     rx: EnvelopeRead<BufReader<OwnedReadHalf>>,
     file_list: Arc<Vec<FileEntry>>,
     seed: i32,
-    s3: aws_sdk_s3::Client,
-    s3_opts: S3Opts,
     basis_dir: TempDir,
-    redis: aio::Connection,
-    redis_opts: RedisOpts,
 }
 
 impl Receiver {
@@ -46,21 +38,13 @@ impl Receiver {
         rx: EnvelopeRead<BufReader<OwnedReadHalf>>,
         file_list: Arc<Vec<FileEntry>>,
         seed: i32,
-        s3: aws_sdk_s3::Client,
-        s3_opts: S3Opts,
         basis_dir: TempDir,
-        redis: aio::Connection,
-        redis_opts: RedisOpts,
     ) -> Self {
         Self {
             rx,
             file_list,
             seed,
-            s3,
-            s3_opts,
             basis_dir,
-            redis,
-            redis_opts,
         }
     }
 }
@@ -92,7 +76,7 @@ struct RecvResult {
 }
 
 impl Receiver {
-    pub async fn recv_task(&mut self, pb: ProgressBar) -> Result<()> {
+    pub async fn recv_task(&mut self, pb: ProgressBar, tx: mpsc::Sender<UploadTask>) -> Result<()> {
         info!("receiver started.");
         let mut phase = 0;
         loop {
@@ -110,7 +94,7 @@ impl Receiver {
             // Intended sign loss.
             #[allow(clippy::cast_sign_loss)]
             let idx = idx as usize;
-            self.recv_file(idx, &pb).await?;
+            self.recv_file(idx, &pb, &tx).await?;
         }
 
         info!("recv finish");
@@ -118,7 +102,12 @@ impl Receiver {
     }
 
     #[instrument(skip(self))]
-    async fn recv_file(&mut self, idx: usize, pb: &ProgressBar) -> Result<()> {
+    async fn recv_file(
+        &mut self,
+        idx: usize,
+        pb: &ProgressBar,
+        tx: &mpsc::Sender<UploadTask>,
+    ) -> Result<()> {
         let entry = &self.file_list[idx];
         debug!(file=%entry.name_lossy(), "receive file");
 
@@ -132,13 +121,13 @@ impl Receiver {
             blake2b_hash,
         } = self.recv_data(basis_file, pb).await?;
 
-        // Upload file to S3.
-        let entry = &self.file_list[idx];
-        let filename = &entry.name;
-        self.upload_s3(filename, target_file, &blake2b_hash).await?;
-
-        // Update metadata in Redis.
-        self.update_metadata(idx, blake2b_hash).await?;
+        tx.send(UploadTask {
+            idx,
+            blake2b_hash,
+            file: target_file,
+        })
+        .await
+        .map_err(|e| eyre!(e.to_string()))?;
 
         Ok(())
     }
@@ -252,92 +241,5 @@ impl Receiver {
             #[allow(clippy::cast_sign_loss)]
             Ordering::Less => Ok(FileToken::Copied(-(token + 1) as u32)),
         }
-    }
-
-    async fn upload_s3(
-        &self,
-        filename: &[u8],
-        target_file: File,
-        blake2b_hash: &[u8; 20],
-    ) -> Result<()> {
-        // File is content addressed by its blake2b hash.
-        let key = format!("{}{:x}", self.s3_opts.prefix, blake2b_hash.as_hex());
-
-        // Check if file already exists. Might happen if the file is the same between two syncs,
-        // or it's hard linked.
-        let exists = self
-            .s3
-            .head_object()
-            .bucket(&self.s3_opts.bucket)
-            .key(&key)
-            .send()
-            .await
-            .map(|_| true)
-            .or_else(|e| match e.into_service_error() {
-                HeadObjectError {
-                    kind: HeadObjectErrorKind::NotFound(_),
-                    ..
-                } => Ok(false),
-                e => Err(e),
-            })?;
-
-        // Only upload if it doesn't exist.
-        if !exists {
-            let body = ByteStream::read_from().file(target_file).build().await?;
-            let encoded_name = percent_encoding::percent_encode(filename, ATTR_CHAR);
-
-            self.s3
-                .put_object()
-                .bucket(&self.s3_opts.bucket)
-                .key(key)
-                .content_disposition(format!(
-                    "attachment; filename=\"{encoded_name}\"; filename*=UTF-8''{encoded_name}"
-                ))
-                .body(body)
-                .send()
-                .await?;
-        }
-        Ok(())
-    }
-
-    async fn update_metadata(&mut self, idx: usize, blake2b_hash: [u8; 20]) -> Result<()> {
-        let entry = &self.file_list[idx];
-        let metadata = Metadata {
-            len: entry.len,
-            modify_time: entry.modify_time,
-            extra: MetaExtra::Regular { blake2b_hash },
-        };
-
-        // Update metadata in Redis.
-        let maybe_old_meta = update_metadata(
-            &mut self.redis,
-            &format!("{}:partial", self.redis_opts.namespace),
-            &entry.name,
-            metadata,
-        )
-        .await?;
-
-        // If a previous version of the file exists, add it to partial-stale.
-        if let Some(Metadata {
-            extra: MetaExtra::Regular {
-                blake2b_hash: old_hash,
-            },
-            ..
-        }) = maybe_old_meta
-        {
-            if old_hash != blake2b_hash {
-                drop(
-                    update_metadata(
-                        &mut self.redis,
-                        &format!("{}:partial-stale", self.redis_opts.namespace),
-                        &entry.name,
-                        maybe_old_meta.expect("checked above"),
-                    )
-                    .await?,
-                );
-            }
-        }
-
-        Ok(())
     }
 }

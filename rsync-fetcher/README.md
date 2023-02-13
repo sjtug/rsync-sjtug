@@ -33,8 +33,13 @@ Generator task:
 
 Receiver task:
 
-1. The receiver task receives files from rsync server, and upload them to S3.
-2. If received a delta, it patches the existing local file previously downloaded and upload the patched file to S3.
-3. After uploading a file, updates the partial index. If the file already exists in the partial index, check if the
+1. The receiver task receives files from rsync server.
+2. If received a delta, it patches the existing local file previously downloaded.
+3. Sends the file to the uploader task.
+
+Uploader task:
+
+1. Take files downloaded by receiver task, and upload them to S3.
+2. After uploading a file, updates the partial index. If the file already exists in the partial index, check if the
    checksum matches. If not, put the old metadata into the partial-stale index, and update the partial index with the
    new metadata.

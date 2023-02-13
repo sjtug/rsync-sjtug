@@ -16,6 +16,7 @@ mod handshake;
 mod mux_conn;
 mod receiver;
 pub mod stats;
+pub mod uploader;
 mod version;
 
 const BYE: i32 = -1;
