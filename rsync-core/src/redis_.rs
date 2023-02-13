@@ -459,7 +459,7 @@ pub async fn recursive_resolve_dir_symlink(
         }
         depth += 1;
         if depth > MAX_SYMLINK_LOOKUP {
-            warn!("symlink lookup depth exceeded");
+            warn!(filename = %key.display(), "symlink lookup depth exceeded");
             return Ok(key);
         }
 
