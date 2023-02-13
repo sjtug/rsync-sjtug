@@ -27,6 +27,7 @@ pub struct State {
     namespace: String,
     // Zero stands for not found.
     latest_index: Arc<AtomicU64>,
+    update_guard: AbortJoinHandle<()>,
 }
 
 impl State {
@@ -34,11 +35,13 @@ impl State {
         conn: aio::MultiplexedConnection,
         namespace: String,
         latest_index: Arc<AtomicU64>,
+        update_guard: AbortJoinHandle<()>,
     ) -> Self {
         Self {
             conn,
             namespace,
             latest_index,
+            update_guard,
         }
     }
     /// Get the latest index.
@@ -211,25 +214,31 @@ mod tests {
     #[tokio::test]
     async fn must_differentiate_namespace() {
         let client = redis_client();
-        let namespace = generate_random_namespace();
+        let ns_a = generate_random_namespace();
+        let ns_b = generate_random_namespace();
 
-        let (_guard, latest_index) = listen_for_updates(&client, &namespace, 999).await.unwrap();
-        assert_eq!(latest_index.load(Ordering::SeqCst), 0);
+        let (_guard_a, latest_index_a) = listen_for_updates(&client, &ns_a, 999).await.unwrap();
+        assert_eq!(latest_index_a.load(Ordering::SeqCst), 0);
+
+        let (_guard_b, latest_index_b) = listen_for_updates(&client, &ns_b, 999).await.unwrap();
+        assert_eq!(latest_index_b.load(Ordering::SeqCst), 0);
 
         let _idx_guard = MetadataIndex::new(
             &client,
-            &format!("{namespace}_a:index:42"),
+            &format!("{ns_a}:index:42"),
             &[("a".into(), Metadata::regular(0, UNIX_EPOCH, [0; 20]))],
         );
         sleep(Duration::from_millis(500)).await;
-        assert_eq!(latest_index.load(Ordering::SeqCst), 0);
+        assert_eq!(latest_index_a.load(Ordering::SeqCst), 42);
+        assert_eq!(latest_index_b.load(Ordering::SeqCst), 0);
 
         let _idx_guard_2 = MetadataIndex::new(
             &client,
-            &format!("{namespace}:index:42"),
+            &format!("{ns_b}:index:43"),
             &[("a".into(), Metadata::regular(0, UNIX_EPOCH, [0; 20]))],
         );
-        sleep(Duration::from_millis(1500)).await;
-        assert_eq!(latest_index.load(Ordering::SeqCst), 42);
+        sleep(Duration::from_millis(500)).await;
+        assert_eq!(latest_index_a.load(Ordering::SeqCst), 42);
+        assert_eq!(latest_index_b.load(Ordering::SeqCst), 43);
     }
 }
