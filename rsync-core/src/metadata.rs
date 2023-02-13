@@ -34,7 +34,7 @@ impl Metadata {
     }
 
     #[must_use]
-    pub fn directory(len: u64, modify_time: SystemTime) -> Self {
+    pub const fn directory(len: u64, modify_time: SystemTime) -> Self {
         Self {
             len,
             modify_time,

@@ -1,6 +1,6 @@
 use actix_web::web::{Data, Path, Redirect};
 use actix_web::{Either, HttpResponse, Responder};
-use bstr::{BStr, ByteSlice};
+use bstr::BStr;
 use tracing::debug;
 
 use rsync_core::redis_::Target;

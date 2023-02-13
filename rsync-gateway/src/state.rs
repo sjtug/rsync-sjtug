@@ -1,13 +1,12 @@
 use std::ffi::OsStr;
 use std::future::ready;
 use std::num::NonZeroU64;
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use bstr::ByteSlice;
 use eyre::{bail, Result};
 use futures::{pin_mut, StreamExt, TryStreamExt};
 use redis::{aio, AsyncCommands, Client};
