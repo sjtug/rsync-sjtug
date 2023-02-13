@@ -21,7 +21,7 @@ use tracing::{debug, info, instrument};
 use rsync_core::metadata::{MetaExtra, Metadata};
 use rsync_core::redis_::{update_metadata, RedisOpts};
 use rsync_core::s3::S3Opts;
-use rsync_core::utils::ToHex;
+use rsync_core::utils::{ToHex, ATTR_CHAR};
 
 use crate::rsync::checksum::SumHead;
 use crate::rsync::envelope::EnvelopeRead;
@@ -133,7 +133,9 @@ impl Receiver {
         } = self.recv_data(basis_file, pb).await?;
 
         // Upload file to S3.
-        self.upload_s3(target_file, &blake2b_hash).await?;
+        let entry = &self.file_list[idx];
+        let filename = &entry.name;
+        self.upload_s3(filename, target_file, &blake2b_hash).await?;
 
         // Update metadata in Redis.
         self.update_metadata(idx, blake2b_hash).await?;
@@ -252,7 +254,12 @@ impl Receiver {
         }
     }
 
-    async fn upload_s3(&mut self, target_file: File, blake2b_hash: &[u8; 20]) -> Result<()> {
+    async fn upload_s3(
+        &self,
+        filename: &[u8],
+        target_file: File,
+        blake2b_hash: &[u8; 20],
+    ) -> Result<()> {
         // File is content addressed by its blake2b hash.
         let key = format!("{}{:x}", self.s3_opts.prefix, blake2b_hash.as_hex());
 
@@ -277,10 +284,15 @@ impl Receiver {
         // Only upload if it doesn't exist.
         if !exists {
             let body = ByteStream::read_from().file(target_file).build().await?;
+            let encoded_name = percent_encoding::percent_encode(filename, ATTR_CHAR);
+
             self.s3
                 .put_object()
                 .bucket(&self.s3_opts.bucket)
                 .key(key)
+                .content_disposition(format!(
+                    "attachment; filename=\"{encoded_name}\"; filename*=UTF-8''{encoded_name}"
+                ))
                 .body(body)
                 .send()
                 .await?;

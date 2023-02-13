@@ -22,6 +22,31 @@ pub const PATH_ASCII_SET: &AsciiSet = &CONTROLS
     .add(b'{')
     .add(b'}');
 
+#[cfg(feature = "percent-encoding")]
+pub const ATTR_CHAR: &AsciiSet = &CONTROLS
+    .add(b'(')
+    .add(b')')
+    .add(b'<')
+    .add(b'>')
+    .add(b'@')
+    .add(b',')
+    .add(b';')
+    .add(b':')
+    .add(b'\\')
+    .add(b'"')
+    .add(b'/')
+    .add(b'[')
+    .add(b']')
+    .add(b'?')
+    .add(b'=')
+    .add(b'{')
+    .add(b'}')
+    .add(b' ')
+    .add(b'\t')
+    .add(b'*')
+    .add(b'\'')
+    .add(b'%');
+
 pub fn init_logger() {
     tracing_subscriber::Registry::default()
         .with(EnvFilter::from_default_env())
