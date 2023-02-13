@@ -1,11 +1,16 @@
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 use std::sync::Arc;
 
 use aws_sdk_s3::error::{HeadObjectError, HeadObjectErrorKind};
 use aws_sdk_s3::types::ByteStream;
 use eyre::Result;
 use redis::aio;
+use tap::TapOptional;
 use tokio::fs::File;
 use tokio::sync::mpsc;
+use tracing::warn;
 
 use rsync_core::metadata::{MetaExtra, Metadata};
 use rsync_core::redis_::{update_metadata, RedisOpts};
@@ -54,7 +59,11 @@ impl Uploader {
 
             // Upload file to S3.
             let entry = &self.file_list[idx];
-            let filename = &entry.name;
+            let key = Path::new(OsStr::from_bytes(&entry.name));
+            let filename = key
+                .file_name()
+                .tap_none(|| warn!(?key, "missing filename of entry"))
+                .map(OsStrExt::as_bytes);
             self.upload_s3(filename, file, &blake2b_hash).await?;
 
             // Update metadata in Redis.
@@ -65,7 +74,7 @@ impl Uploader {
 
     async fn upload_s3(
         &self,
-        filename: &[u8],
+        filename: Option<&[u8]>,
         target_file: File,
         blake2b_hash: &[u8; 20],
     ) -> Result<()> {
@@ -93,15 +102,16 @@ impl Uploader {
         // Only upload if it doesn't exist.
         if !exists {
             let body = ByteStream::read_from().file(target_file).build().await?;
-            let encoded_name = percent_encoding::percent_encode(filename, ATTR_CHAR);
+            let content_disposition = filename.map(|filename| {
+                let encoded_name = percent_encoding::percent_encode(filename, ATTR_CHAR);
+                format!("attachment; filename=\"{encoded_name}\"; filename*=UTF-8''{encoded_name}")
+            });
 
             self.s3
                 .put_object()
                 .bucket(&self.s3_opts.bucket)
                 .key(key)
-                .content_disposition(format!(
-                    "attachment; filename=\"{encoded_name}\"; filename*=UTF-8''{encoded_name}"
-                ))
+                .set_content_disposition(content_disposition)
                 .body(body)
                 .send()
                 .await?;
