@@ -347,7 +347,6 @@ mod tests {
 
         let index = generate_index(&client, &test_index, 999).await.unwrap();
         let content = index.index_for(prefix, &["test"], "list.html", "", "http://gateway/");
-        eprintln!("{}", content);
 
         for (key, href) in expected_files {
             let expected = format!(

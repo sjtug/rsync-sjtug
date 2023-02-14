@@ -9,7 +9,7 @@ use digest::Digest;
 use eyre::{ensure, eyre, Result};
 use indicatif::ProgressBar;
 use md4::Md4;
-use tempfile::{tempfile, TempDir};
+use tempfile::{tempfile_in, TempDir};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 use tokio::net::tcp::OwnedReadHalf;
@@ -158,7 +158,7 @@ impl Receiver {
             remainder_len,
         } = SumHead::read_from(&mut **self).await?;
 
-        let mut target_file = File::from_std(tempfile()?);
+        let mut target_file = File::from_std(tempfile_in(&self.basis_dir)?);
 
         // Hasher for final file consistency check.
         let mut md4_hasher = Md4::default();

@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use eyre::{Context, Result};
@@ -30,8 +31,9 @@ impl MuxConn {
         s3: aws_sdk_s3::Client,
         s3_opts: S3Opts,
         file_list: Arc<Vec<FileEntry>>,
+        temp_dir: &Path,
     ) -> Result<(Generator, Receiver)> {
-        let basis_dir = TempDir::new().context("failed to create temp dir")?;
+        let basis_dir = TempDir::new_in(temp_dir).context("failed to create temp dir")?;
         Ok((
             Generator::new(
                 self.tx,

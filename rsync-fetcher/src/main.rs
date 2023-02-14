@@ -133,8 +133,12 @@ async fn main() -> Result<()> {
     );
     pb.enable_steady_tick(Duration::from_millis(500));
 
-    let (mut generator, mut receiver) =
-        conn.into_gen_recv(s3.clone(), s3_opts.clone(), file_list.clone())?;
+    let (mut generator, mut receiver) = conn.into_gen_recv(
+        s3.clone(),
+        s3_opts.clone(),
+        file_list.clone(),
+        &opts.tmp_path,
+    )?;
     let mut uploader = Uploader::new(
         file_list,
         s3.clone(),

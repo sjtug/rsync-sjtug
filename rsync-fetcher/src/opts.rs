@@ -1,4 +1,5 @@
 use std::ffi::OsString;
+use std::path::PathBuf;
 
 use clap::{ArgAction, Parser};
 use url::Url;
@@ -57,6 +58,9 @@ pub struct Opts {
     /// Disable delta transfer.
     #[clap(long)]
     pub no_delta: bool,
+    /// Temporary directory.
+    #[clap(long, default_value = "/tmp")]
+    pub tmp_path: PathBuf,
 }
 
 impl From<&Opts> for S3Opts {
