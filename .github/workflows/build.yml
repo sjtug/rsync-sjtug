@@ -1,0 +1,32 @@
+on:
+  push:
+    branches:
+      - master
+
+name: Build
+
+jobs:
+  build:
+    name: Build
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Cargo Toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: build-${{ matrix.target }}
+      - name: Setup Cross Toolchain
+        if: matrix.cross
+        uses: taiki-e/install-action@cross
+      - name: Build
+        run: cross build --release --bin rsync-gc --bin rsync-fetcher --bin rsync-gateway --target ${{ matrix.target }}

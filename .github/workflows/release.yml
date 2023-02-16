@@ -4,6 +4,7 @@ on:
       - 'v*'
 
 permissions:
+  checks: read
   contents: write
 
 name: Release
@@ -38,10 +39,17 @@ jobs:
       - name: Setup Cross Toolchain
         if: matrix.cross
         uses: taiki-e/install-action@cross
+      - name: Wait for build on master to succeed
+        uses: lewagon/wait-on-check-action@v1.3.1
+        with:
+          ref: master
+          check-name: 'Build (${{ matrix.target }}, ${{ matrix.os }}, ${{ matrix.cross }})'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
       - uses: Swatinem/rust-cache@v2
         name: Rust Cache
         with:
-          key: ${{ matrix.target }}
+          shared-key: build-${{ matrix.target }}
       - uses: taiki-e/upload-rust-binary-action@v1
         name: Build and Upload
         with:
