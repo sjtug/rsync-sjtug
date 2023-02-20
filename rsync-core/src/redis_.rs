@@ -166,8 +166,7 @@ pub async fn acquire_instance_lock(client: &Client, opts: &RedisOpts) -> Result<
 ///
 /// # Errors
 ///
-/// Returns an error if nothing is written, the source field is not of type Metadata, or fails to
-/// communicate with Redis.
+/// Returns an error if the source field is not of type Metadata, or fails to communicate with Redis.
 pub async fn update_metadata(
     redis: &mut impl aio::ConnectionLike,
     index: &str,
@@ -175,14 +174,12 @@ pub async fn update_metadata(
     metadata: Metadata,
 ) -> Result<Option<Metadata>> {
     // No need to rollback because if the transaction fails, nothing is written.
-    let (old_meta, h_added): (Option<Metadata>, usize) = redis::pipe()
+    let (old_meta, _): (Option<Metadata>, usize) = redis::pipe()
         .atomic()
         .hget(index, path)
         .hset(index, path, metadata)
         .query_async(redis)
         .await?;
-
-    ensure!(h_added == 1, "hset failed");
 
     Ok(old_meta)
 }
