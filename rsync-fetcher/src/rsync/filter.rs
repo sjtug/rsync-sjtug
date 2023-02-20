@@ -18,12 +18,12 @@ impl Rule {
     fn to_command(&self) -> OsString {
         match self {
             Self::Exclude(path) => {
-                let mut cmd = OsString::from("-");
+                let mut cmd = OsString::from("- ");
                 cmd.push(path);
                 cmd
             }
             Self::Include(path) => {
-                let mut cmd = OsString::from("+");
+                let mut cmd = OsString::from("+ ");
                 cmd.push(path);
                 cmd
             }
