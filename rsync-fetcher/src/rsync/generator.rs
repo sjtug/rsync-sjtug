@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use eyre::Result;
 use indicatif::ProgressBar;
-use tokio::fs::File;
+use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 use tokio::net::tcp::OwnedWriteHalf;
 use tracing::{debug, info, warn};
@@ -131,7 +131,13 @@ impl Generator {
     }
     async fn download_basis_file(&self, blake2b_hash: &[u8; 20], path: &[u8]) -> Result<File> {
         let basis_path = self.basis_dir.join(format!("{:x}", hash(path).as_hex()));
-        let mut basis_file = File::create(basis_path).await?;
+        let mut basis_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(basis_path)
+            .await?;
         let obj = self
             .s3
             .get_object()
