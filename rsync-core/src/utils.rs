@@ -1,5 +1,6 @@
 use std::convert::Infallible;
 use std::fmt::LowerHex;
+use std::time::Duration;
 
 #[cfg(feature = "percent-encoding")]
 use percent_encoding::{AsciiSet, CONTROLS};
@@ -91,4 +92,12 @@ pub fn parse_ensure_end_slash(s: &str) -> Result<String, Infallible> {
     } else {
         format!("{s}/")
     })
+}
+
+#[cfg(feature = "backon")]
+pub fn policy() -> impl backon::BackoffBuilder {
+    backon::ExponentialBuilder::default()
+        .with_min_delay(Duration::from_millis(300))
+        .with_max_delay(Duration::from_secs(3))
+        .with_max_times(10)
 }

@@ -1,16 +1,19 @@
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use aws_sdk_s3::model::{Delete, ObjectIdentifier};
 use aws_sdk_s3::Client;
+use backon::{BackoffBuilder, Retryable};
 use eyre::Result;
+use futures::{future, FutureExt, TryFutureExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use scan_fmt::scan_fmt_some;
 use tracing::warn;
 
 use rsync_core::s3::S3Opts;
-use rsync_core::utils::ToHex;
+use rsync_core::utils::{policy, ToHex};
 
 #[cfg(not(test))]
 const ITER_BATCH: i32 = 1000;
@@ -18,84 +21,144 @@ const ITER_BATCH: i32 = 1000;
 #[cfg(test)]
 const ITER_BATCH: i32 = 5;
 
+const DELETE_CONN: usize = 16;
+
+async fn delete_task(
+    rx: flume::Receiver<Delete>,
+    pb: &ProgressBar,
+    pb_spinner: bool,
+    policy: &impl BackoffBuilder,
+    client: &Client,
+    bucket: &str,
+    count: &AtomicU64,
+) -> Result<()> {
+    while let Ok(batch) = rx.recv_async().await {
+        (|| {
+            let batch = batch.clone();
+            let batch_len = batch.objects().unwrap_or_default().len();
+            async move {
+                let resp = client
+                    .delete_objects()
+                    .bucket(bucket)
+                    .delete(batch)
+                    .send()
+                    .await?;
+                let deleted = resp.deleted().unwrap_or_default().len() as u64;
+                let prev = count.fetch_add(batch_len as u64, Ordering::Relaxed);
+                if pb_spinner {
+                    pb.set_message(format!("{} objects", prev + deleted));
+                } else {
+                    pb.inc(batch_len as u64);
+                }
+                Ok::<_, eyre::Report>(())
+            }
+        })
+        .retry(policy)
+        .await?;
+    }
+    Ok::<_, eyre::Report>(())
+}
+
 pub async fn delete_listing(client: &Client, opts: &S3Opts, delete_before: u64) -> Result<u64> {
+    let bucket = &opts.bucket;
+
     let prefix = format!("{}listing-", opts.prefix);
     let scan_pat = format!("{prefix}{{d}}/");
 
     let spinner = ProgressBar::new_spinner();
     spinner.enable_steady_tick(Duration::from_millis(50));
 
-    let mut deleted: u64 = 0;
+    let deleted = AtomicU64::new(0);
 
-    let mut maybe_cached_prefix = None;
-    let mut continuation_token = None;
-    loop {
-        let objects = client
-            .list_objects_v2()
-            .bucket(&opts.bucket)
-            .prefix(&prefix)
-            .max_keys(ITER_BATCH)
-            .set_continuation_token(continuation_token.clone())
-            .send()
-            .await?;
-        let mut delete_batch = Delete::builder();
-        let mut end_of_scan = false;
-        for obj in objects.contents().unwrap_or_default() {
-            let Some(key) = obj.key() else { continue; };
-            if maybe_cached_prefix
-                .as_ref()
-                .map_or(false, |prefix| key.starts_with(prefix))
-            {
-                // Starts with known stale index, delete
-                delete_batch = delete_batch.objects(ObjectIdentifier::builder().key(key).build());
-                continue;
+    let policy = policy();
+    let (tx, rx) = flume::bounded::<Delete>(DELETE_CONN * 2);
+    let del_futs: Vec<_> = (0..DELETE_CONN)
+        .map(|_| {
+            delete_task(
+                rx.clone(),
+                &spinner,
+                true,
+                &policy,
+                client,
+                bucket,
+                &deleted,
+            )
+        })
+        .collect();
+    let gen_fut = async move {
+        let mut maybe_cached_prefix = None;
+        let mut continuation_token = None;
+        loop {
+            let objects = client
+                .list_objects_v2()
+                .bucket(&opts.bucket)
+                .prefix(&prefix)
+                .max_keys(ITER_BATCH)
+                .set_continuation_token(continuation_token.clone())
+                .send()
+                .await?;
+            let mut delete_batch = Delete::builder();
+            let mut end_of_scan = false;
+            for obj in objects.contents().unwrap_or_default() {
+                let Some(key) = obj.key() else { continue; };
+                if maybe_cached_prefix
+                    .as_ref()
+                    .map_or(false, |prefix| key.starts_with(prefix))
+                {
+                    // Starts with known stale index, delete
+                    delete_batch =
+                        delete_batch.objects(ObjectIdentifier::builder().key(key).build());
+                    continue;
+                }
+                let Some(timestamp) = scan_fmt_some!(key, &scan_pat, u64) else {
+                    warn!(key, "Unexpected key in listing bucket");
+                    continue;
+                };
+                if timestamp < delete_before {
+                    // Update known stale index
+                    maybe_cached_prefix = Some(format!("{prefix}{timestamp}"));
+                    // Delete
+                    delete_batch =
+                        delete_batch.objects(ObjectIdentifier::builder().key(key).build());
+                } else {
+                    // Stop scanning.
+                    end_of_scan = true;
+                    break;
+                }
             }
-            let Some(timestamp) = scan_fmt_some!(key, &scan_pat, u64) else {
-                warn!(key, "Unexpected key in listing bucket");
-                continue;
-            };
-            if timestamp < delete_before {
-                // Update known stale index
-                maybe_cached_prefix = Some(format!("{prefix}{timestamp}"));
-                // Delete
-                delete_batch = delete_batch.objects(ObjectIdentifier::builder().key(key).build());
+
+            let delete_batch = delete_batch.build();
+
+            // Execute delete batch.
+            if delete_batch.objects().is_some() {
+                tx.send_async(delete_batch).await?;
+            }
+
+            // If end of scan, break.
+            if end_of_scan {
+                break;
+            }
+
+            // Update continuation token.
+            if let Some(token) = objects.next_continuation_token() {
+                continuation_token = Some(token.to_string());
             } else {
-                // Stop scanning.
-                end_of_scan = true;
+                // end of stream.
                 break;
             }
         }
+        Ok::<_, eyre::Report>(())
+    };
 
-        let delete_batch = delete_batch.build();
+    let futs = future::try_join_all([
+        gen_fut.left_future(),
+        future::try_join_all(del_futs).map_ok(|_| ()).right_future(),
+    ]);
+    futs.await?;
 
-        // Execute delete batch.
-        if delete_batch.objects().is_some() {
-            let resp = client
-                .delete_objects()
-                .bucket(&opts.bucket)
-                .delete(delete_batch)
-                .send()
-                .await?;
-            deleted += resp.deleted().unwrap_or_default().len() as u64;
-            spinner.set_message(format!("{deleted} objects"));
-        }
-
-        // If end of scan, break.
-        if end_of_scan {
-            break;
-        }
-
-        // Update continuation token.
-        if let Some(token) = objects.next_continuation_token() {
-            continuation_token = Some(token.to_string());
-        } else {
-            // end of stream.
-            break;
-        }
-    }
     spinner.finish_and_clear();
 
-    Ok(deleted)
+    Ok(deleted.load(Ordering::Relaxed))
 }
 
 pub async fn bulk_delete_objs(
@@ -104,7 +167,6 @@ pub async fn bulk_delete_objs(
     hashes: &HashSet<[u8; 20]>,
 ) -> Result<u64> {
     let S3Opts { prefix, bucket, .. } = opts;
-    let mut deleted: u64 = 0;
 
     let pb = ProgressBar::new(hashes.len() as u64);
     pb.set_style(
@@ -116,28 +178,34 @@ pub async fn bulk_delete_objs(
     );
     pb.enable_steady_tick(Duration::from_millis(100));
 
+    let deleted = AtomicU64::new(0);
+
+    let policy = policy();
+    let (tx, rx) = flume::bounded::<Delete>(DELETE_CONN * 2);
+    let del_futs: Vec<_> = (0..DELETE_CONN)
+        .map(|_| delete_task(rx.clone(), &pb, false, &policy, client, bucket, &deleted))
+        .collect();
     let chunks = hashes.iter().chunks(ITER_BATCH as usize);
-    for chunk in &chunks {
-        let mut delete_batch = Delete::builder();
-        for hash in chunk {
-            let key = format!("{prefix}{:x}", hash.as_hex());
-            delete_batch = delete_batch.objects(ObjectIdentifier::builder().key(key).build());
+    let gen_fut = async move {
+        for chunk in &chunks {
+            let mut delete_batch = Delete::builder();
+            for hash in chunk {
+                let key = format!("{prefix}{:x}", hash.as_hex());
+                delete_batch = delete_batch.objects(ObjectIdentifier::builder().key(key).build());
+            }
+            let delete_batch = delete_batch.build();
+            tx.send_async(delete_batch).await?;
         }
-        let delete_batch = delete_batch.build();
+        Ok::<_, eyre::Report>(())
+    };
 
-        let resp = client
-            .delete_objects()
-            .bucket(bucket)
-            .delete(delete_batch)
-            .send()
-            .await?;
-        deleted += resp.deleted().unwrap_or_default().len() as u64;
-        pb.inc(ITER_BATCH as u64);
-    }
+    let futs = future::try_join_all([
+        gen_fut.left_future(),
+        future::try_join_all(del_futs).map_ok(|_| ()).right_future(),
+    ]);
+    futs.await?;
 
-    pb.finish_and_clear();
-
-    Ok(deleted)
+    Ok(deleted.load(Ordering::Relaxed))
 }
 
 #[cfg(test)]

@@ -9,18 +9,21 @@ use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use aws_sdk_s3::types::ByteStream;
+use backon::{BackoffBuilder, Retryable};
 use bytesize::ByteSize;
 use chrono::{DateTime, Utc};
 use eyre::Result;
+use futures::{future, FutureExt, TryFutureExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use redis::AsyncCommands;
 
 use rsync_core::metadata::Metadata;
 use rsync_core::redis_::{follow_symlink, Target};
 use rsync_core::s3::S3Opts;
-use rsync_core::utils::{ToHex, PATH_ASCII_SET};
+use rsync_core::utils::{policy, ToHex, PATH_ASCII_SET};
 
 const MAX_DEPTH: usize = 64;
+const UPLOAD_CONN: usize = 8;
 
 #[derive(Debug)]
 struct IndexEntry {
@@ -262,32 +265,82 @@ pub async fn generate_index_and_upload(
 
     let now = DateTime::<Utc>::from(UNIX_EPOCH + Duration::from_secs(timestamp)).to_rfc2822();
 
-    for key in keys {
-        let content = index.index_for(
-            key.trim_end_matches("index.html"),
-            &[repo_name],
-            "index.html",
-            &now,
-            gateway_base,
-        );
-        let stream = ByteStream::from(content.into_bytes());
-        s3_client
-            .put_object()
-            .bucket(&s3_opts.bucket)
-            .key(&format!("{prefix}listing-{timestamp}/{key}"))
-            .content_type("text/html")
-            .body(stream)
-            .send()
-            .await?;
-        pb.inc(1);
-    }
+    let policy = policy();
+    let (tx, rx) = flume::bounded(UPLOAD_CONN * 2);
+    let upload_futs: Vec<_> = (0..UPLOAD_CONN)
+        .map(|_| {
+            upload_task(
+                rx.clone(),
+                &pb,
+                &policy,
+                s3_client,
+                &s3_opts.bucket,
+                prefix,
+                timestamp,
+            )
+        })
+        .collect();
+    let gen_fut = async move {
+        for key in keys {
+            let content = index.index_for(
+                key.trim_end_matches("index.html"),
+                &[repo_name],
+                "index.html",
+                &now,
+                gateway_base,
+            );
+            tx.send_async((key, content)).await?;
+        }
+        Ok::<_, eyre::Report>(())
+    };
 
+    let futs = future::try_join_all([
+        gen_fut.left_future(),
+        future::try_join_all(upload_futs)
+            .map_ok(|_| ())
+            .right_future(),
+    ]);
+    futs.await?;
+
+    Ok(())
+}
+
+async fn upload_task(
+    rx: flume::Receiver<(String, String)>,
+    pb: &ProgressBar,
+    policy: &impl BackoffBuilder,
+    s3_client: &aws_sdk_s3::Client,
+    bucket: &str,
+    prefix: &str,
+    timestamp: u64,
+) -> Result<()> {
+    while let Ok((key, content)) = rx.recv_async().await {
+        (move || {
+            let (key, content) = (key.clone(), content.clone());
+            async move {
+                let stream = ByteStream::from(content.into_bytes());
+                s3_client
+                    .put_object()
+                    .bucket(bucket)
+                    .key(&format!("{prefix}listing-{timestamp}/{key}"))
+                    .content_type("text/html")
+                    .body(stream)
+                    .send()
+                    .await?;
+                pb.inc(1);
+                Ok::<_, eyre::Report>(())
+            }
+        })
+        .retry(policy)
+        .await?;
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use std::time::UNIX_EPOCH;
+    use std::{assert_eq, format};
 
     use itertools::Itertools;
 
