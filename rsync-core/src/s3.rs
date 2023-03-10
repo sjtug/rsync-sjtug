@@ -28,8 +28,8 @@ pub mod tests {
     use aws_sdk_s3::model::{BucketLocationConstraint, CreateBucketConfiguration};
     use aws_sdk_s3::types::ByteStream;
     use aws_sdk_s3::{Client, Region};
+    use s3s::auth::SimpleAuth;
     use s3s::service::S3Service;
-    use s3s::SimpleAuth;
     use s3s_aws::Connector;
     use s3s_fs::FileSystem;
     use tempfile::TempDir;
