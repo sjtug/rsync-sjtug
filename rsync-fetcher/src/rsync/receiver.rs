@@ -6,14 +6,13 @@ use std::sync::Arc;
 use blake2::Blake2b;
 use digest::consts::U20;
 use digest::Digest;
-use eyre::{ensure, eyre, Result};
+use eyre::{ensure, Result};
 use indicatif::ProgressBar;
 use md4::Md4;
 use tempfile::{tempfile_in, TempDir};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 use tokio::net::tcp::OwnedReadHalf;
-use tokio::sync::mpsc;
 use tracing::{debug, info, instrument};
 
 use rsync_core::utils::ToHex;
@@ -76,7 +75,11 @@ struct RecvResult {
 }
 
 impl Receiver {
-    pub async fn recv_task(&mut self, pb: ProgressBar, tx: mpsc::Sender<UploadTask>) -> Result<()> {
+    pub async fn recv_task(
+        &mut self,
+        pb: ProgressBar,
+        tx: flume::Sender<UploadTask>,
+    ) -> Result<()> {
         info!("receiver started.");
         let mut phase = 0;
         loop {
@@ -106,7 +109,7 @@ impl Receiver {
         &mut self,
         idx: usize,
         pb: &ProgressBar,
-        tx: &mpsc::Sender<UploadTask>,
+        tx: &flume::Sender<UploadTask>,
     ) -> Result<()> {
         let entry = &self.file_list[idx];
         debug!(file=%entry.name_lossy(), "receive file");
@@ -121,13 +124,12 @@ impl Receiver {
             blake2b_hash,
         } = self.recv_data(basis_file, pb).await?;
 
-        tx.send(UploadTask {
+        tx.send_async(UploadTask {
             idx,
             blake2b_hash,
             file: target_file,
         })
-        .await
-        .map_err(|e| eyre!(e.to_string()))?;
+        .await?;
 
         Ok(())
     }

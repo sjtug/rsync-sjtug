@@ -11,7 +11,6 @@ use std::time::Duration;
 use clap::Parser;
 use eyre::Result;
 use indicatif::{ProgressBar, ProgressStyle};
-use tokio::sync::mpsc;
 use tracing::info;
 
 use rsync_core::redis_::{
@@ -23,7 +22,7 @@ use rsync_core::utils::init_logger;
 use crate::index::generate_index_and_upload;
 use crate::opts::{Opts, RsyncOpts};
 use crate::plan::generate_transfer_plan;
-use crate::rsync::uploader::Uploader;
+use crate::rsync::uploader::{Uploader, UPLOAD_CONN};
 use crate::rsync::{finalize, start_handshake};
 use crate::symlink::apply_symlinks_n_directories;
 use crate::utils::timestamp;
@@ -139,18 +138,18 @@ async fn main() -> Result<()> {
         file_list.clone(),
         &opts.tmp_path,
     )?;
-    let mut uploader = Uploader::new(
+    let uploader = Uploader::new(
         file_list,
         s3.clone(),
         s3_opts.clone(),
-        redis_conn,
+        redis.get_multiplexed_async_connection().await?,
         redis_opts,
     );
-    let (tx, rx) = mpsc::channel(16);
+    let (tx, rx) = flume::bounded(UPLOAD_CONN * 2);
     tokio::try_join!(
         generator.generate_task(&transfer_plan.downloads, pb.clone()),
         receiver.recv_task(pb.clone(), tx),
-        uploader.upload_task(rx),
+        uploader.upload_tasks(rx),
     )?;
 
     pb.finish_and_clear();
