@@ -13,7 +13,8 @@ use backon::{BackoffBuilder, Retryable};
 use bytesize::ByteSize;
 use chrono::{DateTime, Utc};
 use eyre::Result;
-use futures::{future, FutureExt, TryFutureExt};
+use futures::stream::FuturesUnordered;
+use futures::{FutureExt, TryStreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use redis::AsyncCommands;
 
@@ -267,7 +268,7 @@ pub async fn generate_index_and_upload(
 
     let policy = policy();
     let (tx, rx) = flume::bounded(UPLOAD_CONN * 2);
-    let upload_futs: Vec<_> = (0..UPLOAD_CONN)
+    let futs: FuturesUnordered<_> = (0..UPLOAD_CONN)
         .map(|_| {
             upload_task(
                 rx.clone(),
@@ -278,6 +279,7 @@ pub async fn generate_index_and_upload(
                 prefix,
                 timestamp,
             )
+            .left_future()
         })
         .collect();
     let gen_fut = async move {
@@ -294,13 +296,8 @@ pub async fn generate_index_and_upload(
         Ok::<_, eyre::Report>(())
     };
 
-    let futs = future::try_join_all([
-        gen_fut.left_future(),
-        future::try_join_all(upload_futs)
-            .map_ok(|_| ())
-            .right_future(),
-    ]);
-    futs.await?;
+    futs.push(gen_fut.right_future());
+    futs.try_collect::<()>().await?;
 
     Ok(())
 }

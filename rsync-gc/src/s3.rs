@@ -6,7 +6,8 @@ use aws_sdk_s3::model::{Delete, ObjectIdentifier};
 use aws_sdk_s3::Client;
 use backon::{BackoffBuilder, Retryable};
 use eyre::Result;
-use futures::{future, FutureExt, TryFutureExt};
+use futures::stream::FuturesUnordered;
+use futures::{FutureExt, TryStreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use scan_fmt::scan_fmt_some;
@@ -72,7 +73,7 @@ pub async fn delete_listing(client: &Client, opts: &S3Opts, delete_before: u64) 
 
     let policy = policy();
     let (tx, rx) = flume::bounded::<Delete>(DELETE_CONN * 2);
-    let del_futs: Vec<_> = (0..DELETE_CONN)
+    let futs: FuturesUnordered<_> = (0..DELETE_CONN)
         .map(|_| {
             delete_task(
                 rx.clone(),
@@ -83,6 +84,7 @@ pub async fn delete_listing(client: &Client, opts: &S3Opts, delete_before: u64) 
                 bucket,
                 &deleted,
             )
+            .left_future()
         })
         .collect();
     let gen_fut = async move {
@@ -150,11 +152,8 @@ pub async fn delete_listing(client: &Client, opts: &S3Opts, delete_before: u64) 
         Ok::<_, eyre::Report>(())
     };
 
-    let futs = future::try_join_all([
-        gen_fut.left_future(),
-        future::try_join_all(del_futs).map_ok(|_| ()).right_future(),
-    ]);
-    futs.await?;
+    futs.push(gen_fut.right_future());
+    futs.try_collect::<()>().await?;
 
     spinner.finish_and_clear();
 
@@ -182,8 +181,10 @@ pub async fn bulk_delete_objs(
 
     let policy = policy();
     let (tx, rx) = flume::bounded::<Delete>(DELETE_CONN * 2);
-    let del_futs: Vec<_> = (0..DELETE_CONN)
-        .map(|_| delete_task(rx.clone(), &pb, false, &policy, client, bucket, &deleted))
+    let futs: FuturesUnordered<_> = (0..DELETE_CONN)
+        .map(|_| {
+            delete_task(rx.clone(), &pb, false, &policy, client, bucket, &deleted).left_future()
+        })
         .collect();
     let chunks = hashes.iter().chunks(ITER_BATCH as usize);
     let gen_fut = async move {
@@ -199,11 +200,8 @@ pub async fn bulk_delete_objs(
         Ok::<_, eyre::Report>(())
     };
 
-    let futs = future::try_join_all([
-        gen_fut.left_future(),
-        future::try_join_all(del_futs).map_ok(|_| ()).right_future(),
-    ]);
-    futs.await?;
+    futs.push(gen_fut.right_future());
+    futs.try_collect::<()>().await?;
 
     Ok(deleted.load(Ordering::Relaxed))
 }
