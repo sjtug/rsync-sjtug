@@ -3,23 +3,38 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use url::Url;
 
+use crate::rsync::downloader::Downloader;
 use crate::rsync::envelope::RsyncReadExt;
+use crate::rsync::generator::Generator;
 use crate::rsync::handshake::HandshakeConn;
+use crate::rsync::progress_display::ProgressDisplay;
+use crate::rsync::receiver::Receiver;
 use crate::rsync::stats::Stats;
+use crate::rsync::uploader::Uploader;
 
 mod checksum;
+mod downloader;
 mod envelope;
 pub mod file_list;
 pub mod filter;
 mod generator;
 mod handshake;
 mod mux_conn;
+mod progress_display;
 mod receiver;
 pub mod stats;
 pub mod uploader;
 mod version;
 
 const BYE: i32 = -1;
+
+pub struct TaskBuilders {
+    pub downloader: Downloader,
+    pub generator: Generator,
+    pub receiver: Receiver,
+    pub uploader: Uploader,
+    pub progress: ProgressDisplay,
+}
 
 pub async fn start_handshake(url: &Url) -> Result<HandshakeConn> {
     let port = url.port().unwrap_or(873);

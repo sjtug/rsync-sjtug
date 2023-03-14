@@ -8,9 +8,8 @@ use rsync_core::redis_::RedisOpts;
 use rsync_core::s3::S3Opts;
 use rsync_core::utils::parse_ensure_end_slash;
 
+use crate::consts::LOCK_TIMEOUT;
 use crate::rsync::filter::Rule;
-
-const LOCK_TIMEOUT: u64 = 3 * 60;
 
 #[derive(Parser)]
 pub struct Opts {

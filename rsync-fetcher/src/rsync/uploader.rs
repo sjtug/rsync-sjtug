@@ -15,24 +15,26 @@ use redis::aio;
 use tap::TapOptional;
 use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
-use tracing::warn;
+use tracing::{debug, warn};
 
 use rsync_core::metadata::{MetaExtra, Metadata};
 use rsync_core::redis_::{update_metadata, RedisOpts};
 use rsync_core::s3::S3Opts;
 use rsync_core::utils::{policy, ToHex, ATTR_CHAR};
 
+use crate::consts::UPLOAD_CONN;
 use crate::rsync::file_list::FileEntry;
-
-pub const UPLOAD_CONN: usize = 4;
+use crate::rsync::progress_display::ProgressDisplay;
 
 pub struct Uploader {
+    rx: flume::Receiver<UploadTask>,
     file_list: Arc<Vec<FileEntry>>,
     s3: aws_sdk_s3::Client,
     s3_opts: S3Opts,
     redis: aio::MultiplexedConnection,
     redis_opts: RedisOpts,
     uploaded: DashSet<[u8; 20]>,
+    pb: ProgressDisplay,
 }
 
 pub struct UploadTask {
@@ -43,31 +45,37 @@ pub struct UploadTask {
 
 impl Uploader {
     pub fn new(
+        rx: flume::Receiver<UploadTask>,
         file_list: Arc<Vec<FileEntry>>,
         s3: aws_sdk_s3::Client,
         s3_opts: S3Opts,
         redis: aio::MultiplexedConnection,
         redis_opts: RedisOpts,
+        pb: ProgressDisplay,
     ) -> Self {
         Self {
+            rx,
             file_list,
             s3,
             s3_opts,
             redis,
             redis_opts,
             uploaded: DashSet::new(),
+            pb,
         }
     }
 
-    pub async fn upload_tasks(&self, rx: flume::Receiver<UploadTask>) -> Result<()> {
-        let futs: FuturesUnordered<_> = (0..UPLOAD_CONN).map(|_| self.upload_task(&rx)).collect();
+    pub async fn upload_tasks(self) -> Result<()> {
+        let futs: FuturesUnordered<_> = (0..UPLOAD_CONN).map(|id| self.upload_task(id)).collect();
         futs.try_collect().await?;
         Ok(())
     }
 
-    async fn upload_task(&self, rx: &flume::Receiver<UploadTask>) -> Result<()> {
+    async fn upload_task(&self, id: usize) -> Result<()> {
+        debug!("upload task {} started", id);
+
         let policy = policy();
-        while let Ok(task) = rx.recv_async().await {
+        while let Ok(task) = self.rx.recv_async().await {
             let UploadTask {
                 idx,
                 blake2b_hash,
@@ -102,10 +110,13 @@ impl Uploader {
             })
             .retry(&policy)
             .await?;
+            self.pb.dec_uploading(1);
 
             // Update metadata in Redis.
             self.update_metadata(idx, blake2b_hash).await?;
         }
+
+        debug!("upload task {} finished", id);
         Ok(())
     }
 

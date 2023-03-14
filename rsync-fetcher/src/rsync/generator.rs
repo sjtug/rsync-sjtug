@@ -1,35 +1,33 @@
 use std::cmp::min;
 use std::ffi::OsStr;
-use std::io::SeekFrom;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use eyre::Result;
-use indicatif::ProgressBar;
-use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
+use futures::{stream, StreamExt};
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::OwnedWriteHalf;
-use tracing::{debug, info, warn};
-
-use rsync_core::s3::S3Opts;
-use rsync_core::utils::ToHex;
+use tokio::sync::{mpsc, Semaphore};
+use tracing::{debug, info};
 
 use crate::plan::TransferItem;
 use crate::rsync::checksum::{checksum_1, checksum_2, SumHead};
 use crate::rsync::file_list::FileEntry;
-use crate::utils::hash;
+use crate::rsync::progress_display::ProgressDisplay;
+use crate::utils::ignore_mode;
 
 /// Generator sends requests to rsync server.
 pub struct Generator {
     tx: OwnedWriteHalf,
     file_list: Arc<Vec<FileEntry>>,
     seed: i32,
-    s3: aws_sdk_s3::Client,
-    s3_opts: S3Opts,
-    basis_dir: PathBuf,
+    permits: Arc<Semaphore>,
+    basis_rx: mpsc::Receiver<(u32, File)>,
+    pb: ProgressDisplay,
 }
 
 impl Generator {
@@ -37,17 +35,17 @@ impl Generator {
         tx: OwnedWriteHalf,
         file_list: Arc<Vec<FileEntry>>,
         seed: i32,
-        s3: aws_sdk_s3::Client,
-        s3_opts: S3Opts,
-        basis_dir: PathBuf,
+        permits: Arc<Semaphore>,
+        basis_rx: mpsc::Receiver<(u32, File)>,
+        pb: ProgressDisplay,
     ) -> Self {
         Self {
             tx,
             file_list,
             seed,
-            s3,
-            s3_opts,
-            basis_dir,
+            permits,
+            basis_rx,
+            pb,
         }
     }
 }
@@ -67,17 +65,11 @@ impl DerefMut for Generator {
 }
 
 impl Generator {
-    pub async fn generate_task(
-        &mut self,
-        transfer_plan: &[TransferItem],
-        pb: ProgressBar,
-    ) -> Result<()> {
+    pub async fn generate_task(&mut self, transfer_plan: &[TransferItem]) -> Result<()> {
         info!("generator started.");
 
         info!("generate file phase 1");
-        for entry in transfer_plan {
-            self.recv_generator(entry, &pb).await?;
-        }
+        self.recv_generator(transfer_plan).await?;
 
         self.write_i32_le(-1).await?;
 
@@ -88,72 +80,47 @@ impl Generator {
         info!("generator finish");
         Ok(())
     }
-    async fn recv_generator(&mut self, item: &TransferItem, pb: &ProgressBar) -> Result<()> {
-        let entry = &self.file_list[item.idx as usize];
-        let idx = entry.idx;
-        let path = Path::new(OsStr::from_bytes(&entry.name));
+    async fn recv_generator(&mut self, transfer_plan: &[TransferItem]) -> Result<()> {
+        let file_list = self.file_list.clone();
+        let it = transfer_plan.iter().filter(|item| {
+            let entry = &file_list[item.idx as usize];
+            item.blake2b_hash.is_none() && !ignore_mode(entry.mode, None::<()>)
+        });
+        let mut async_it = stream::iter(it);
 
-        if unix_mode::is_dir(entry.mode) {
-            // No need to create dir in S3 storage.
-            return Ok(());
-        }
+        loop {
+            // NOTE: permits are refilled after the corresponding files are received.
+            self.permits.acquire().await?.forget();
 
-        // We skip all non-regular files, including directories and symlinks.
-        if !unix_mode::is_file(entry.mode) {
-            if !unix_mode::is_symlink(entry.mode) || !unix_mode::is_dir(entry.mode) {
-                warn!(
-                    ?path,
-                    mode = format!("{:o}", entry.mode),
-                    "skip special file"
-                );
+            tokio::select! { biased;
+                Some((idx, file)) = self.basis_rx.recv() => {
+                    let entry = &self.file_list[idx as usize];
+                    let path = Path::new(OsStr::from_bytes(&entry.name));
+
+                    debug!(?path, idx, "requesting partial file");
+                    self.write_u32_le(idx).await?;
+                    self.generate_and_send_sums(file).await?;
+
+                    self.pb.inc_pending(1);
+                }
+                Some(item) = async_it.next() => {
+                    let entry = &self.file_list[item.idx as usize];
+                    let idx = entry.idx;
+                    let path = Path::new(OsStr::from_bytes(&entry.name));
+
+                    debug!(?path, idx, "requesting full file");
+                    self.write_u32_le(idx).await?;
+                    SumHead::default().write_to(&mut **self).await?;
+
+                    self.pb.inc_pending(1);
+                }
+                else => {
+                    break;
+                }
             }
-            return Ok(());
-        }
-
-        pb.inc_length(entry.len);
-        if let Some(blake2b_hash) = &item.blake2b_hash {
-            // We have a basis file. Use it to initiate a delta transfer
-            debug!(?path, idx, "requesting partial file");
-
-            debug!(?path, hash=%format!("{:x}", blake2b_hash.as_hex()), "download basis file");
-            let basis_file = self.download_basis_file(blake2b_hash, &entry.name).await?;
-
-            self.write_u32_le(idx).await?;
-            self.generate_and_send_sums(basis_file).await?;
-        } else {
-            debug!(?path, idx, "requesting full file");
-
-            self.write_u32_le(idx).await?;
-            SumHead::default().write_to(&mut **self).await?;
         }
 
         Ok(())
-    }
-    async fn download_basis_file(&self, blake2b_hash: &[u8; 20], path: &[u8]) -> Result<File> {
-        let basis_path = self.basis_dir.join(format!("{:x}", hash(path).as_hex()));
-        let mut basis_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(basis_path)
-            .await?;
-        let obj = self
-            .s3
-            .get_object()
-            .bucket(&self.s3_opts.bucket)
-            .key(format!(
-                "{}{:x}",
-                self.s3_opts.prefix,
-                blake2b_hash.as_hex()
-            ))
-            .send()
-            .await?;
-        let mut body = BufReader::new(obj.body.into_async_read());
-        tokio::io::copy(&mut body, &mut basis_file).await?;
-
-        basis_file.seek(SeekFrom::Start(0)).await?;
-        Ok(basis_file)
     }
     async fn generate_and_send_sums(&mut self, mut file: File) -> Result<()> {
         let file_len = file.metadata().await?.size();

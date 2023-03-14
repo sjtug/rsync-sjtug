@@ -1,18 +1,20 @@
 use std::cmp::Ordering;
 use std::io::SeekFrom;
 use std::ops::{Deref, DerefMut};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use blake2::Blake2b;
 use digest::consts::U20;
 use digest::Digest;
 use eyre::{ensure, Result};
-use indicatif::ProgressBar;
 use md4::Md4;
 use tempfile::{tempfile_in, TempDir};
+use tokio::fs;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 use tokio::net::tcp::OwnedReadHalf;
+use tokio::sync::Semaphore;
 use tracing::{debug, info, instrument};
 
 use rsync_core::utils::ToHex;
@@ -20,14 +22,18 @@ use rsync_core::utils::ToHex;
 use crate::rsync::checksum::SumHead;
 use crate::rsync::envelope::EnvelopeRead;
 use crate::rsync::file_list::FileEntry;
+use crate::rsync::progress_display::ProgressDisplay;
 use crate::rsync::uploader::UploadTask;
 use crate::utils::hash;
 
 pub struct Receiver {
     rx: EnvelopeRead<BufReader<OwnedReadHalf>>,
+    upload_tx: Option<flume::Sender<UploadTask>>,
     file_list: Arc<Vec<FileEntry>>,
     seed: i32,
     basis_dir: TempDir,
+    permits: Arc<Semaphore>,
+    pb: ProgressDisplay,
 }
 
 impl Receiver {
@@ -35,15 +41,21 @@ impl Receiver {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         rx: EnvelopeRead<BufReader<OwnedReadHalf>>,
+        upload_tx: flume::Sender<UploadTask>,
         file_list: Arc<Vec<FileEntry>>,
         seed: i32,
         basis_dir: TempDir,
+        permits: Arc<Semaphore>,
+        pb: ProgressDisplay,
     ) -> Self {
         Self {
             rx,
+            upload_tx: Some(upload_tx),
             file_list,
             seed,
             basis_dir,
+            permits,
+            pb,
         }
     }
 }
@@ -75,11 +87,7 @@ struct RecvResult {
 }
 
 impl Receiver {
-    pub async fn recv_task(
-        &mut self,
-        pb: ProgressBar,
-        tx: flume::Sender<UploadTask>,
-    ) -> Result<()> {
+    pub async fn recv_task(&mut self) -> Result<()> {
         info!("receiver started.");
         let mut phase = 0;
         loop {
@@ -97,62 +105,72 @@ impl Receiver {
             // Intended sign loss.
             #[allow(clippy::cast_sign_loss)]
             let idx = idx as usize;
-            self.recv_file(idx, &pb, &tx).await?;
+            self.recv_file(idx).await?;
         }
 
         info!("recv finish");
+        self.upload_tx.take().unwrap();
         Ok(())
     }
 
     #[instrument(skip(self))]
-    async fn recv_file(
-        &mut self,
-        idx: usize,
-        pb: &ProgressBar,
-        tx: &flume::Sender<UploadTask>,
-    ) -> Result<()> {
+    async fn recv_file(&mut self, idx: usize) -> Result<()> {
         let entry = &self.file_list[idx];
         debug!(file=%entry.name_lossy(), "receive file");
 
         // Get basis file if exists. It should be created by generator if delta transfer is
         // enabled and an old version of the file exists.
-        let basis_file = self.try_get_basis_file(&entry.name).await?;
+        let mut basis_file = self.try_get_basis_file(&entry.name).await?;
 
         // Receive file data.
         let RecvResult {
             target_file,
             blake2b_hash,
-        } = self.recv_data(basis_file, pb).await?;
+        } = self.recv_data(basis_file.as_mut().map(|(_, f)| f)).await?;
 
-        tx.send_async(UploadTask {
-            idx,
-            blake2b_hash,
-            file: target_file,
-        })
-        .await?;
+        // Delete basis file once it's not needed.
+        // TODO use NamedTempFile or some kind of RAII handle instead?
+        if let Some((p, f)) = basis_file {
+            drop(f);
+            fs::remove_file(p).await?;
+            self.pb.dec_basis(1);
+        }
+        // Release permit.
+        self.permits.add_permits(1);
+        self.pb.dec_pending(1);
+
+        self.upload_tx
+            .as_ref()
+            .expect("task can be run only once")
+            .send_async(UploadTask {
+                idx,
+                blake2b_hash,
+                file: target_file,
+            })
+            .await?;
+        self.pb.inc_uploading(1);
 
         Ok(())
     }
 
-    async fn try_get_basis_file(&self, path: &[u8]) -> Result<Option<File>> {
+    async fn try_get_basis_file(&self, path: &[u8]) -> Result<Option<(PathBuf, File)>> {
         let basis_path = self
             .basis_dir
             .path()
             .join(format!("{:x}", hash(path).as_hex()));
-        Ok(File::open(&basis_path).await.map(Some).or_else(|f| {
-            if f.kind() == std::io::ErrorKind::NotFound {
-                Ok(None)
-            } else {
-                Err(f)
-            }
-        })?)
+        Ok(File::open(&basis_path)
+            .await
+            .map(|f| Some((basis_path, f)))
+            .or_else(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    Ok(None)
+                } else {
+                    Err(e)
+                }
+            })?)
     }
 
-    async fn recv_data(
-        &mut self,
-        mut local_basis: Option<File>,
-        pb: &ProgressBar,
-    ) -> Result<RecvResult> {
+    async fn recv_data(&mut self, mut local_basis: Option<&mut File>) -> Result<RecvResult> {
         let SumHead {
             checksum_count,
             block_len,
@@ -174,7 +192,7 @@ impl Receiver {
             match token {
                 FileToken::Data(data) => {
                     transferred += data.len() as u64;
-                    pb.inc(data.len() as u64);
+                    self.pb.inc(data.len() as u64);
 
                     md4_hasher.update(&data);
                     blake2b_hasher.update(&data);
@@ -191,10 +209,10 @@ impl Receiver {
                             block_len
                         };
                     copied += data_len as u64;
-                    pb.inc(data_len as u64);
+                    self.pb.inc(data_len as u64);
 
                     let mut buf = vec![0; data_len as usize];
-                    let local_basis = local_basis.as_mut().expect("incremental");
+                    let local_basis = local_basis.as_deref_mut().expect("incremental");
                     local_basis.seek(SeekFrom::Start(offset)).await?;
                     local_basis.read_exact(&mut buf).await?;
 

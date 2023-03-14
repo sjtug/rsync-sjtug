@@ -6,11 +6,9 @@
 )]
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use clap::Parser;
 use eyre::Result;
-use indicatif::{ProgressBar, ProgressStyle};
 use tracing::info;
 
 use rsync_core::redis_::{
@@ -22,11 +20,11 @@ use rsync_core::utils::init_logger;
 use crate::index::generate_index_and_upload;
 use crate::opts::{Opts, RsyncOpts};
 use crate::plan::generate_transfer_plan;
-use crate::rsync::uploader::{Uploader, UPLOAD_CONN};
-use crate::rsync::{finalize, start_handshake};
+use crate::rsync::{finalize, start_handshake, TaskBuilders};
 use crate::symlink::apply_symlinks_n_directories;
-use crate::utils::timestamp;
+use crate::utils::{plan_stat, timestamp};
 
+mod consts;
 mod index;
 mod opts;
 mod plan;
@@ -122,37 +120,30 @@ async fn main() -> Result<()> {
     .await?;
 
     // Start the transfer. The transfer model is basically the same as the original rsync impl.
-    let pb = ProgressBar::new(0);
-    pb.set_style(
-        ProgressStyle::with_template(
-            "[{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
-        )
-            .unwrap()
-            .progress_chars("#>-"),
-    );
-    pb.enable_steady_tick(Duration::from_millis(500));
-
-    let (mut generator, mut receiver) = conn.into_gen_recv(
-        s3.clone(),
-        s3_opts.clone(),
-        file_list.clone(),
-        &opts.tmp_path,
-    )?;
-    let uploader = Uploader::new(
-        file_list,
+    let TaskBuilders {
+        downloader,
+        mut generator,
+        mut receiver,
+        uploader,
+        progress,
+    } = conn.into_task_builders(
         s3.clone(),
         s3_opts.clone(),
         redis.get_multiplexed_async_connection().await?,
         redis_opts,
-    );
-    let (tx, rx) = flume::bounded(UPLOAD_CONN * 2);
-    tokio::try_join!(
-        generator.generate_task(&transfer_plan.downloads, pb.clone()),
-        receiver.recv_task(pb.clone(), tx),
-        uploader.upload_tasks(rx),
+        file_list.clone(),
+        &opts.tmp_path,
     )?;
-
-    pb.finish_and_clear();
+    let stat = plan_stat(&file_list, &transfer_plan.downloads);
+    info!(?stat, "transfer plan stat.");
+    progress.set_length(stat.total_bytes);
+    tokio::try_join!(
+        downloader.tasks(&transfer_plan.downloads),
+        generator.generate_task(&transfer_plan.downloads),
+        receiver.recv_task(),
+        uploader.upload_tasks(),
+    )?;
+    progress.finalize().await?;
 
     let timestamp = timestamp();
 

@@ -23,8 +23,7 @@ use rsync_core::redis_::{follow_symlink, Target};
 use rsync_core::s3::S3Opts;
 use rsync_core::utils::{policy, ToHex, PATH_ASCII_SET};
 
-const MAX_DEPTH: usize = 64;
-const UPLOAD_CONN: usize = 8;
+use crate::consts::{MAX_DEPTH, UPLOAD_CONN};
 
 #[derive(Debug)]
 struct IndexEntry {

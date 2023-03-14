@@ -95,6 +95,7 @@ pub fn parse_ensure_end_slash(s: &str) -> Result<String, Infallible> {
 }
 
 #[cfg(feature = "backon")]
+#[must_use]
 pub fn policy() -> impl backon::BackoffBuilder {
     backon::ExponentialBuilder::default()
         .with_min_delay(Duration::from_millis(300))
