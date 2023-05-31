@@ -11,7 +11,7 @@ use crate::state::{listen_for_updates, State};
 
 pub async fn configure(opts: &Opts) -> Result<impl Fn(&mut ServiceConfig) + Clone> {
     let prefix_state: Arc<Vec<_>> = Arc::new(
-        future::try_join_all(opts.endpoints.iter().map(|(prefix, endpoint)| async {
+        future::try_join_all(opts.endpoints.iter().rev().map(|(prefix, endpoint)| async {
             let prefix = prefix.trim_end_matches('/').to_string();
             let redis = redis::Client::open(endpoint.redis.clone())?;
             let conn = redis.get_multiplexed_tokio_connection().await?;
