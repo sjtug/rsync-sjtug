@@ -9,6 +9,7 @@ async-trait = "0.1"
 aws-config = "0.54"
 aws-sdk-s3 = "0.24"
 backon = "0.4"
+base64 = "0.21"
 bincode = "2.0.0-rc.2"
 blake2 = "0.10"
 bytesize = "1.1"
@@ -39,6 +40,7 @@ tokio = { version = "1.25", features = ["full"] }
 tracing = "0.1"
 unix_mode = "0.1"
 url = "2.3"
+zeroize = { version = "1.6", features=["derive"] }
 
 [dev-dependencies]
 rsync-core = { path = "../rsync-core", features = ["tests"] }

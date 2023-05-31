@@ -6,7 +6,7 @@ use url::Url;
 use crate::rsync::downloader::Downloader;
 use crate::rsync::envelope::RsyncReadExt;
 use crate::rsync::generator::Generator;
-use crate::rsync::handshake::HandshakeConn;
+use crate::rsync::handshake::{Auth, HandshakeConn};
 use crate::rsync::progress_display::ProgressDisplay;
 use crate::rsync::receiver::Receiver;
 use crate::rsync::stats::Stats;
@@ -39,6 +39,7 @@ pub struct TaskBuilders {
 pub async fn start_handshake(url: &Url) -> Result<HandshakeConn> {
     let port = url.port().unwrap_or(873);
     let path = url.path().trim_start_matches('/');
+    let auth = Auth::from_url_and_env(url);
     let module = path.split('/').next().context("empty remote path")?;
 
     let stream = TcpStream::connect(format!(
@@ -50,7 +51,7 @@ pub async fn start_handshake(url: &Url) -> Result<HandshakeConn> {
     .context("rsync server refused connection. Is it running?")?;
 
     let mut handshake = HandshakeConn::new(stream);
-    handshake.start_inband_exchange(module, path).await?;
+    handshake.start_inband_exchange(module, path, auth).await?;
 
     Ok(handshake)
 }

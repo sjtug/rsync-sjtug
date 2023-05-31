@@ -3,16 +3,64 @@
 //! In this stage, the client and server exchange information about the protocol version, server
 //! sends the motd message, and client sends the module name, path name, options, and filter rules.
 
+use std::fmt::{Debug, Formatter};
+
+use base64::engine::general_purpose;
+use base64::Engine;
+use digest::Digest;
 use eyre::{bail, Result};
+use md4::Md4;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 use tracing::{debug, instrument};
+use url::Url;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::rsync::envelope::EnvelopeRead;
 use crate::rsync::filter::Rule;
 use crate::rsync::mux_conn::MuxConn;
 use crate::rsync::version::{Version, SUPPORTED_VERSION};
+
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct Auth {
+    username: String,
+    password: String,
+}
+
+impl Debug for Auth {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Auth")
+            .field("username", &self.username)
+            .field("password", &"********")
+            .finish()
+    }
+}
+
+impl Auth {
+    pub fn from_url_and_env(url: &Url) -> Self {
+        let username = if url.username().is_empty() {
+            "nobody".to_string()
+        } else {
+            url.username().to_string()
+        };
+        let password = url
+            .password()
+            .map(ToString::to_string)
+            .or_else(|| std::env::var("RSYNC_PASSWORD").ok())
+            .unwrap_or_default();
+        Self { username, password }
+    }
+    fn challenge(&self, challenge: &str) -> String {
+        let mut hasher = Md4::default();
+        hasher.update([0; 4]);
+        hasher.update(&self.password);
+        hasher.update(challenge);
+        let hash = hasher.finalize();
+        let response = general_purpose::STANDARD_NO_PAD.encode(hash);
+        format!("{} {}", self.username, response)
+    }
+}
 
 /// Represents a connection that is in the handshake phase.
 ///
@@ -33,7 +81,12 @@ impl HandshakeConn {
     }
 
     #[instrument(skip(self))]
-    pub async fn start_inband_exchange(&mut self, module: &str, path: &str) -> Result<()> {
+    pub async fn start_inband_exchange(
+        &mut self,
+        module: &str,
+        path: &str,
+        auth: Auth,
+    ) -> Result<()> {
         debug!("negotiate protocol version");
         SUPPORTED_VERSION.write_to(&mut self.tx).await?;
 
@@ -55,7 +108,12 @@ impl HandshakeConn {
             if line.starts_with("@ERROR") {
                 bail!("server error: {}", line);
             } else if line.starts_with("@RSYNCD: AUTHREQD ") {
-                bail!("server requires authentication");
+                let challenge = line
+                    .strip_prefix("@RSYNCD: AUTHREQD ")
+                    .expect("challenge")
+                    .trim();
+                let resp = auth.challenge(challenge);
+                self.tx.write_all(format!("{resp}\n").as_bytes()).await?;
             } else if line.starts_with("@RSYNCD: OK") {
                 break;
             } else {
