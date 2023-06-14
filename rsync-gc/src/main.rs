@@ -7,9 +7,10 @@
 
 use clap::Parser;
 use eyre::Result;
+use futures::TryStreamExt;
 use tracing::info;
 
-use rsync_core::redis_::{acquire_instance_lock, RedisOpts};
+use rsync_core::redis_::{acquire_instance_lock, stale_index, RedisOpts};
 use rsync_core::s3::{create_s3_client, S3Opts};
 use rsync_core::utils::init_logger;
 
@@ -53,6 +54,10 @@ async fn main() -> Result<()> {
     );
 
     rename_to_stale(&mut redis_conn, &redis_opts.namespace, &delete).await?;
+    let delete: Vec<_> = stale_index(&mut redis_conn, &redis_opts.namespace)
+        .await?
+        .try_collect()
+        .await?;
 
     info!("deleting stale listings...");
     let deleted = delete_listing(&s3, &s3_opts, delete_before).await?;
