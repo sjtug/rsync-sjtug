@@ -71,14 +71,20 @@ impl FromRedisValue for Metadata {
     fn from_redis_value(v: &Value) -> RedisResult<Self> {
         match v {
             Value::Data(data) => {
-                let (metadata, _) =
+                let (metadata, len) =
                     bincode::decode_from_slice(data, BINCODE_CONFIG).map_err(|e| {
                         RedisError::from((
                             redis::ErrorKind::TypeError,
-                            "Response data not valid metadata",
+                            "Invalid metadata",
                             e.to_string(),
                         ))
                     })?;
+                if data.len() != len {
+                    return Err(RedisError::from((
+                        redis::ErrorKind::TypeError,
+                        "Invalid metadata (length mismatch)",
+                    )));
+                }
                 Ok(metadata)
             }
             _ => Err(RedisError::from((

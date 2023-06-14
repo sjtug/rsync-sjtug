@@ -19,6 +19,7 @@ versions older than 2.6.0 are supported.
 * **rsync-fetcher** - fetches the repository from the remote server, and uploads it to s3.
 * **rsync-gateway** - serves the mirrored repository from s3 in **http** protocol.
 * **rsync-gc** - periodically removes old versions of files from s3.
+* **rsync-fix-encoding** - see "Migrating from v0.2.11 to older versions" section.
 
 ## Example
 
@@ -82,3 +83,12 @@ Note that there are more than one file index in Redis.
 
 > Not all files in partial index should be removed. For example, if a file exists both in a stale index and a "live"
 > index, it should not be removed.
+
+## Migrating from v0.2.11 to older versions
+
+There's a bug affecting all versions before v0.3.0 and after v0.2.11, which causes the file metadata to be read in a
+wrong format and silently corrupting the index. Note that no data is lost, but the gateway will fail to direct users to
+the correct file. `rsync-fix-encoding` can be used to fix this issue.
+
+After v0.3.0, all commands are using the new encoding. You can still use this tool to migrate old data to the new
+encoding. Trying to use the new commands on old data will now fail.

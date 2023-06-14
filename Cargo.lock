@@ -789,12 +789,29 @@ dependencies = [
 
 [[package]]
 name = "bincode"
+version = "2.0.0-rc.2"
+source = "git+https://github.com/bincode-org/bincode?rev=v2.0.0-rc.2#6c219e9214bda2bdce1327db6ed7f66d2fa4bf02"
+dependencies = [
+ "bincode_derive 2.0.0-rc.2",
+ "serde",
+]
+
+[[package]]
+name = "bincode"
 version = "2.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f11ea1a0346b94ef188834a65c068a03aec181c94896d481d7a0a40d85b0ce95"
 dependencies = [
- "bincode_derive",
+ "bincode_derive 2.0.0-rc.3",
  "serde",
+]
+
+[[package]]
+name = "bincode_derive"
+version = "2.0.0-rc.2"
+source = "git+https://github.com/bincode-org/bincode?rev=v2.0.0-rc.2#6c219e9214bda2bdce1327db6ed7f66d2fa4bf02"
+dependencies = [
+ "virtue 0.0.8",
 ]
 
 [[package]]
@@ -803,7 +820,7 @@ version = "2.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e30759b3b99a1b802a7a3aa21c85c3ded5c28e1c83170d82d70f08bbf7f3e4c"
 dependencies = [
- "virtue",
+ "virtue 0.0.13",
 ]
 
 [[package]]
@@ -2282,7 +2299,7 @@ dependencies = [
  "aws-credential-types",
  "aws-sdk-s3",
  "backon",
- "bincode",
+ "bincode 2.0.0-rc.3",
  "clean-path",
  "either",
  "eyre",
@@ -2311,7 +2328,7 @@ dependencies = [
  "aws-sdk-s3",
  "backon",
  "base64",
- "bincode",
+ "bincode 2.0.0-rc.3",
  "blake2",
  "bytesize",
  "chrono",
@@ -2345,13 +2362,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "rsync-fix-encoding"
+version = "0.1.0"
+dependencies = [
+ "bincode 2.0.0-rc.2",
+ "bincode 2.0.0-rc.3",
+ "clap",
+ "color-eyre",
+ "eyre",
+ "futures",
+ "indicatif",
+ "redis",
+ "rsync-core",
+ "scan_fmt",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "rsync-gateway"
 version = "0.1.0"
 dependencies = [
  "actix-web",
  "aws-config",
  "aws-sdk-s3",
- "bincode",
+ "bincode 2.0.0-rc.3",
  "bstr",
  "clap",
  "color-eyre",
@@ -3213,6 +3249,12 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
+
+[[package]]
+name = "virtue"
+version = "0.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b60dcd6a64dd45abf9bd426970c9843726da7fc08f44cd6fcebf68c21220a63"
 
 [[package]]
 name = "virtue"
