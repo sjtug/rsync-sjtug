@@ -8,7 +8,7 @@ edition = "2021"
 actix-web = "4.3"
 aws-config = "0.54"
 aws-sdk-s3 = "0.24"
-bincode = "2.0.0-rc.2"
+bincode = "=2.0.0-rc.3"
 bstr = "1.2"
 clap = { version = "4.1", features = ["derive"] }
 color-eyre = "0.6"
