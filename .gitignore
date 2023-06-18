@@ -1,1 +1,6 @@
 target
+bacon.toml
+config.toml
+cross.sh
+test.sh
+test-gc.sh
