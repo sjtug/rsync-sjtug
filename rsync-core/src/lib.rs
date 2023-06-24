@@ -5,6 +5,8 @@
 )]
 
 pub mod metadata;
+#[cfg(feature = "pg")]
+pub mod pg_lock;
 pub mod redis_;
 #[cfg(feature = "s3")]
 pub mod s3;
