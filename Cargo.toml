@@ -1,3 +1,6 @@
 [workspace]
-members = ["rsync-core", "rsync-fetcher", "rsync-gateway", "rsync-gc", "rsync-fix-encoding"]
+members = ["rsync-core", "rsync-fetcher", "rsync-fix-encoding", "rsync-gateway", "rsync-gc", "rsync-migration"]
 resolver = "2"
+
+[profile.dev.package.sqlx-macros]
+opt-level = 3

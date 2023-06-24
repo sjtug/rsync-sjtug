@@ -4,3 +4,4 @@ config.toml
 cross.sh
 test.sh
 test-gc.sh
+.env
