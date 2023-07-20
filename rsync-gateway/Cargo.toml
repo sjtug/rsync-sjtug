@@ -38,5 +38,11 @@ zstd = "0.12"
 
 [dev-dependencies]
 async-trait = "0.1"
+chrono = { version = "0.4", features = ["arbitrary"] }
 maplit = "1.0"
+proptest = "1.2"
+proptest-arbitrary-interop = "0.1"
+proptest-derive = "0.3"
+rstest = "0.18"
 rsync-core = { path = "../rsync-core", features = ["tests"] }
+test-strategy = "0.3"

@@ -63,11 +63,13 @@ pub fn init_logger() {
 
 #[cfg(feature = "tests")]
 pub fn test_init_logger() {
-    tracing_subscriber::Registry::default()
-        .with(LevelFilter::DEBUG)
-        .with(ErrorLayer::default())
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
-        .init();
+    drop(
+        tracing_subscriber::Registry::default()
+            .with(LevelFilter::DEBUG)
+            .with(ErrorLayer::default())
+            .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+            .try_init(),
+    );
 }
 
 /// Initialize color-eyre error handling, with `NO_COLOR` support.

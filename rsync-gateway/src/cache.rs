@@ -27,20 +27,39 @@ pub const PRESIGN_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24);
 /// 2. Less access time than storing certain patterns compressed in a single cache, ignoring
 /// their access patterns. Can probably reduce the risk of `DoS` attacks by deliberately requesting
 /// compressed paths very frequently.
-pub struct NSCache(ArcSwap<NSCacheInner>);
+pub struct NSCache {
+    inner: ArcSwap<NSCacheInner>,
+    sync_l2: bool, // do not return until L2 cache is synced
+}
 
 impl NSCache {
+    /// Create a new cache.
     pub fn new() -> Self {
-        Self(ArcSwap::new(Arc::new(NSCacheInner::new())))
+        Self {
+            inner: ArcSwap::new(Arc::new(NSCacheInner::new())),
+            sync_l2: false,
+        }
+    }
+    /// Create a new cache.
+    ///
+    /// Note: the cache created by this function forces L2 cache to be synced before returning
+    /// from `get_or_insert`. In other words, all inserted value are guaranteed to be in L2 cache
+    /// when `get_or_insert` returns.
+    #[cfg(test)]
+    pub fn new_with_sync_l2() -> Self {
+        Self {
+            inner: ArcSwap::new(Arc::new(NSCacheInner::new())),
+            sync_l2: true,
+        }
     }
     /// Invalidate the cache. Takes effect immediately.
     pub fn invalidate(&self) {
-        self.0.store(Arc::new(NSCacheInner::new()));
+        self.inner.store(Arc::new(NSCacheInner::new()));
     }
-    /// Invalidate L1 cache only. Delayed effect.
+    /// Invalidate L1 cache only.
     /// Debug only.
     pub fn invalidate_l1(&self) {
-        let guard = self.0.load();
+        let guard = self.inner.load();
         guard.l1.invalidate_all();
     }
     pub async fn get_or_insert(
@@ -50,8 +69,8 @@ impl NSCache {
     ) -> Result<Arc<Resolved>, Arc<Report>> {
         // We have this weird return type to avoid losing information during error propagation.
 
-        let guard = self.0.load();
-        guard.get_or_insert(key, init).await
+        let guard = self.inner.load();
+        guard.get_or_insert(key, init, self.sync_l2).await
     }
 }
 
@@ -90,6 +109,7 @@ impl NSCacheInner {
         &self,
         key: &[u8],
         init: impl Future<Output = Result<Resolved>>,
+        sync_l2: bool,
     ) -> Result<Arc<Resolved>, Arc<Report>> {
         // We have this weird return type to avoid losing information during error propagation.
 
@@ -135,7 +155,7 @@ impl NSCacheInner {
         // We do this asynchronously even though there might be a short period of time when the
         // entry only exists in L1 cache but not in L2 cache. This should be okay as long as we are
         // a NINE cache, and in most cases subsequent requests will hit L1 cache.
-        tokio::spawn({
+        let handle = tokio::spawn({
             let l2 = self.l2.clone();
             let key = key.to_vec();
             let resolved = resolved.clone();
@@ -155,6 +175,10 @@ impl NSCacheInner {
                 }
             }
         });
+
+        if sync_l2 {
+            handle.await.expect("L2 cache task failed");
+        }
 
         Ok(resolved)
     }
@@ -260,5 +284,147 @@ impl Expiry<Vec<u8>, Arc<MaybeCompressed>> for ExpiryPolicy {
                 self.expire_after_create(key, resolved, current_time)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::future::ready;
+
+    use eyre::eyre;
+    use proptest::{prop_assert_eq, prop_assume};
+    use proptest_derive::Arbitrary;
+    use rstest::rstest;
+    use test_strategy::proptest;
+    use tokio::sync::oneshot;
+
+    use crate::cache::NSCache;
+    use crate::path_resolve::Resolved;
+
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, Arbitrary)]
+    enum InvalidateLevel {
+        L1,
+        All,
+        None,
+    }
+
+    impl InvalidateLevel {
+        fn execute_on(self, cache: &NSCache) -> bool {
+            match self {
+                Self::L1 => {
+                    cache.invalidate_l1();
+                    false
+                }
+                Self::All => {
+                    cache.invalidate();
+                    true
+                }
+                Self::None => false,
+            }
+        }
+    }
+
+    #[proptest(async = "tokio")]
+    async fn must_ok_refl(key: Vec<u8>, resolved: Resolved, invalidate: InvalidateLevel) {
+        let cache = NSCache::new_with_sync_l2();
+        let result = cache
+            .get_or_insert(&key, ready(Ok(resolved.clone())))
+            .await
+            .expect("no error");
+        prop_assert_eq!(&*result, &resolved);
+
+        let purged = invalidate.execute_on(&cache);
+
+        let input = ready(if purged {
+            Ok(resolved.clone())
+        } else {
+            Err(eyre!("boom"))
+        });
+        let result = cache.get_or_insert(&key, input).await.expect("no error");
+        prop_assert_eq!(&*result, &resolved);
+    }
+
+    #[proptest(async = "tokio")]
+    async fn must_ok2_refl(
+        key1: Vec<u8>,
+        resolved1: Resolved,
+        key2: Vec<u8>,
+        resolved2: Resolved,
+        insert_in_first_pass: bool,
+        invalidate: InvalidateLevel,
+    ) {
+        prop_assume!(key1 != key2);
+        prop_assume!(invalidate != InvalidateLevel::All);
+        let cache = NSCache::new_with_sync_l2();
+        cache
+            .get_or_insert(&key1, ready(Ok(resolved1)))
+            .await
+            .expect("no error");
+        if insert_in_first_pass {
+            cache
+                .get_or_insert(&key2, ready(Ok(resolved2.clone())))
+                .await
+                .expect("no error");
+        }
+
+        let purged = !insert_in_first_pass || invalidate.execute_on(&cache);
+
+        let input = ready(if purged {
+            Ok(resolved2.clone())
+        } else {
+            Err(eyre!("boom"))
+        });
+        let result = cache.get_or_insert(&key2, input).await.expect("no error");
+        prop_assert_eq!(&*result, &resolved2);
+    }
+
+    #[rstest]
+    #[case(InvalidateLevel::L1)]
+    #[case(InvalidateLevel::All)]
+    #[case(InvalidateLevel::None)]
+    #[tokio::test]
+    async fn must_err_refl(#[case] invalidate: InvalidateLevel) {
+        let cache = NSCache::new_with_sync_l2();
+
+        let result = cache.get_or_insert(&[1], ready(Err(eyre!("boom1")))).await;
+        if let Err(e) = &result {
+            assert_eq!(e.to_string(), "boom1");
+        } else {
+            panic!("must be error");
+        }
+
+        invalidate.execute_on(&cache);
+
+        let result = cache.get_or_insert(&[1], ready(Err(eyre!("boom2")))).await;
+        if let Err(e) = &result {
+            assert_eq!(e.to_string(), "boom2");
+        } else {
+            panic!("must be error");
+        }
+    }
+
+    #[tokio::test]
+    async fn must_race() {
+        let cache = NSCache::new();
+
+        let (tx, rx) = oneshot::channel();
+        let resolved = Resolved::Directory { entries: vec![] };
+
+        let result_1 = cache.get_or_insert(&[1], {
+            let resolved = resolved.clone();
+            async move {
+                rx.await.expect("recv");
+                Ok(resolved)
+            }
+        });
+        let result_2 = cache.get_or_insert(&[1], {
+            async move {
+                panic!("must not be called");
+            }
+        });
+        tx.send(()).expect("send");
+
+        assert_eq!(*result_1.await.expect("no error"), resolved);
+        assert_eq!(*result_2.await.expect("no error"), resolved);
     }
 }

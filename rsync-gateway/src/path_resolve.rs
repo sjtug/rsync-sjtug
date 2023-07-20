@@ -17,7 +17,8 @@ use crate::realpath::{realpath, RealpathError, ResolveError, Target};
 use crate::utils::SkipRkyv;
 
 /// A resolved result that can be rendered or redirected to.
-#[derive(Debug, GetSize, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, GetSize, Archive, Serialize, Deserialize)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Resolved {
     Directory {
         entries: Vec<ListingEntry>,
@@ -86,11 +87,24 @@ async fn resolve_listing<'a>(
 }
 
 /// A single entry in a listing.
-#[derive(Debug, GetSize, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, GetSize, Archive, Serialize, Deserialize)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ListingEntry {
     pub filename: Vec<u8>,
     pub len: Option<u64>,
     #[get_size(ignore)]
+    #[cfg_attr(test, proptest(strategy = "test::arb_datetime_opt()"))]
     pub modify_time: Option<DateTime<Utc>>,
     pub is_dir: bool,
+}
+
+#[cfg(test)]
+mod test {
+    use chrono::{DateTime, Utc};
+    use proptest::strategy::Strategy;
+    use proptest_arbitrary_interop::arb;
+
+    pub fn arb_datetime_opt() -> impl Strategy<Value = Option<DateTime<Utc>>> {
+        proptest::option::of(arb())
+    }
 }
