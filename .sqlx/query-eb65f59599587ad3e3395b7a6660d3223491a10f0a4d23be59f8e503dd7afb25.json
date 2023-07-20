@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO revisions (repository, created_at, status)\n        VALUES ((SELECT id FROM repositories WHERE name = $1), $2, $3)\n        RETURNING revision;\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "revision",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz",
+        {
+          "Custom": {
+            "name": "revision_status",
+            "kind": {
+              "Enum": [
+                "partial",
+                "live",
+                "stale"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "eb65f59599587ad3e3395b7a6660d3223491a10f0a4d23be59f8e503dd7afb25"
+}

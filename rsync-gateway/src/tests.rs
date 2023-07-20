@@ -4,7 +4,6 @@ use std::time::UNIX_EPOCH;
 use actix_web::http::{Method, StatusCode, Uri};
 use actix_web::middleware::{NormalizePath, TrailingSlash};
 use actix_web::{test, App};
-
 use async_trait::async_trait;
 use chrono::DateTime;
 use eyre::Result;
