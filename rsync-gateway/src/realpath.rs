@@ -31,7 +31,8 @@ pub enum RealpathError {
     Other(#[from] eyre::Report),
 }
 
-#[derive(Debug, Error, GetSize, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Error, GetSize, Archive, Serialize, Deserialize)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum ResolveError {
     #[error("wrong path or broken symlink")]
     Broken { trace: Vec<String> },
