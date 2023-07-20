@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH ns AS (SELECT id FROM repositories WHERE name = $1),\n     live_revisions AS (SELECT revision\n                        from revisions\n                        WHERE repository in (SELECT id FROM ns)\n                          and status = 'live'),\n     partial_revisions AS (SELECT revision\n                           from revisions\n                           WHERE repository in (SELECT id FROM ns)\n                             and status = 'partial'),\n     stale_revisions AS (SELECT revision\n                         from revisions\n                         WHERE repository in (SELECT id FROM ns)\n                           and status = 'stale'),\n     live_filenames AS (SELECT blake2b\n                        from objects\n                        WHERE revision IN (SELECT revision FROM live_revisions)\n                          AND blake2b IS NOT NULL),\n     partial_filenames AS (SELECT blake2b\n                           from objects\n                           WHERE revision IN (SELECT revision FROM partial_revisions)\n                             AND blake2b IS NOT NULL),\n     stale_filenames AS (SELECT blake2b\n                         from objects\n                         WHERE revision IN (SELECT revision FROM stale_revisions)\n                           AND blake2b IS NOT NULL)\nSELECT DISTINCT s.blake2b as \"blake2b!\"\nFROM stale_filenames AS s\n         LEFT JOIN live_filenames AS l\n                   ON s.blake2b = l.blake2b\n         LEFT JOIN partial_filenames AS p\n                   ON s.blake2b = p.blake2b\nWHERE l.blake2b IS NULL\n  AND p.blake2b IS NULL;\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "blake2b!",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "551ae8db1359ccab87701bcab2e98a39fb1db0bb6fed84f7292be0a0101b47b9"
+}

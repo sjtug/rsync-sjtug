@@ -15,7 +15,7 @@ use url::Url;
 use rsync_core::metadata::{MetaExtra, Metadata};
 use rsync_core::pg_lock::PgLock;
 use rsync_core::redis_::{acquire_instance_lock, async_iter_to_stream, RedisOpts};
-use rsync_core::utils::init_logger;
+use rsync_core::utils::{init_color_eyre, init_logger};
 
 const INSERT_CHUNK_SIZE: usize = 10000;
 
@@ -43,7 +43,7 @@ impl PgHasArrayType for FileType {
     }
 }
 
-#[derive(sqlx::Type)]
+#[derive(sqlx::Type, Debug, Eq, PartialEq)]
 #[sqlx(type_name = "revision_status", rename_all = "lowercase")]
 enum RevisionStatus {
     Partial,
@@ -60,12 +60,13 @@ impl PgHasArrayType for RevisionStatus {
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() -> eyre::Result<()> {
-    color_eyre::install()?;
+    init_color_eyre()?;
     init_logger();
     dotenvy::dotenv()?;
     let args = Args::parse();
 
     let pool = PgPool::connect(&args.db_url).await?;
+    // Only when there's no r/w access to the database can we change the schema.
     info!("waiting for _system lock");
     let system_lock = PgLock::new_exclusive("_system");
     let system_guard = system_lock.lock(pool.acquire().await?).await?;
@@ -102,17 +103,19 @@ async fn main() -> eyre::Result<()> {
         indices.sort_unstable_by(|s, t| index_order(&namespace, s, t));
         info!(?indices, "found indices");
 
+        // Exclusively lock namespace to ensure only one write operation(fetch, migrate, gc) is
+        // running on the namespace.
         let repo_lock = PgLock::new_exclusive(&namespace);
         let repo_guard = repo_lock.lock(pool.acquire().await?).await?;
         let mut txn = pool.begin().await?;
         let namespace_id = sqlx::query_scalar!(
             r#"
             INSERT INTO repositories (name) VALUES ($1)
-            ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id
+            ON CONFLICT (name) DO NOTHING RETURNING id
             "#,
             namespace
         )
-        .fetch_one(&mut txn)
+        .fetch_one(&mut *txn)
         .await?;
         for index_key in indices {
             info!(index_key, "start migrating");
@@ -154,18 +157,29 @@ async fn main() -> eyre::Result<()> {
             } else {
                 RevisionStatus::Partial
             };
-            let created_at = Utc::now();
+            let _created_at = Utc::now();
             let rev = sqlx::query_scalar!(
                 r#"
-                INSERT INTO revisions(repository, created_at, status) VALUES ($1, $2, $3)
+                INSERT INTO revisions(repository, created_at, status) VALUES ($1, now(), 'partial')
                 RETURNING revision
                 "#,
-                namespace_id,
-                created_at,
-                rev_state as _
+                namespace_id
             )
-            .fetch_one(&mut txn)
+            .fetch_one(&mut *txn)
             .await?;
+            if rev_state != RevisionStatus::Partial {
+                sqlx::query!(
+                    r#"
+                    UPDATE revisions
+                    SET status = $1, completed_at = now()
+                    WHERE revision = $2
+                    "#,
+                    rev_state as _,
+                    rev
+                )
+                .execute(&mut *txn)
+                .await?;
+            }
             // Batch entries into 1000 entries per query
             let mut affected = 0u64;
             for (ks, vs, ms, tys, hs, ts) in multizip((
@@ -193,7 +207,7 @@ async fn main() -> eyre::Result<()> {
                     &hs[..] as _,
                     &ts[..] as _,
                 )
-                .execute(&mut txn)
+                .execute(&mut *txn)
                 .await?;
                 affected += result.rows_affected();
             }
@@ -201,10 +215,10 @@ async fn main() -> eyre::Result<()> {
 
             info!(index_key, rev, "start updating parents");
             info!(index_key, rev, "analysing data pattern");
-            sqlx::query!("ANALYZE objects").execute(&mut txn).await?;
+            sqlx::query!("ANALYZE objects").execute(&mut *txn).await?;
             info!(index_key, rev, "do actual update");
             sqlx::query_file!("../sqls/update_parent.sql", rev)
-                .execute(&mut txn)
+                .execute(&mut *txn)
                 .await?;
             info!(index_key, affected, "rows affected");
         }

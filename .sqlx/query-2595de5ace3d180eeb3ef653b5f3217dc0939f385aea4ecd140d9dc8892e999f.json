@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM revisions\n        WHERE revision = ANY($1::int[])\n    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2595de5ace3d180eeb3ef653b5f3217dc0939f385aea4ecd140d9dc8892e999f"
+}

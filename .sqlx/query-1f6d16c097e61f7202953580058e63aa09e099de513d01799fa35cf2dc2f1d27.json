@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO objects (id, revision, filename, len, modify_time, type, blake2b)\n            OVERRIDING SYSTEM VALUE\n            VALUES ($1, $2, $3, 0, now(), $4, $5)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int4",
+        "Bytea",
+        {
+          "Custom": {
+            "name": "filetype",
+            "kind": {
+              "Enum": [
+                "regular",
+                "directory",
+                "symlink"
+              ]
+            }
+          }
+        },
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1f6d16c097e61f7202953580058e63aa09e099de513d01799fa35cf2dc2f1d27"
+}

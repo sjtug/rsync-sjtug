@@ -1,0 +1,8 @@
+version: "3"
+
+services:
+  postgres:
+    build: .
+    volumes:
+      - './postgresql.conf:/etc/postgresql/postgresql.conf:ro'
+      - './data:/var/lib/postgresql/data'

@@ -5,22 +5,31 @@
     clippy::too_many_lines
 )]
 
-use std::sync::Arc;
-
-use actix_web::middleware::{NormalizePath, TrailingSlash};
+use actix_web::middleware::TrailingSlash;
 use actix_web::{App, HttpServer};
+use actix_web_lab::middleware::NormalizePath;
 use eyre::Result;
+use sqlx::PgPool;
+use tracing::{error, warn};
 use tracing_actix_web::TracingLogger;
 
-use rsync_core::utils::init_logger;
+use rsync_core::pg_lock::PgLock;
+use rsync_core::utils::{init_color_eyre, init_logger};
 
-use crate::app::configure;
+use crate::app::{configure, default_op_builder};
 use crate::opts::{load_config, validate_config};
 
 mod app;
+mod cache;
 mod handler;
+mod listener;
 mod opts;
+mod path_resolve;
+mod pg;
+mod realpath;
+mod render;
 mod state;
+mod templates;
 #[cfg(test)]
 mod tests;
 mod utils;
@@ -28,17 +37,24 @@ mod utils;
 #[actix_web::main]
 pub async fn main() -> Result<()> {
     init_logger();
-    color_eyre::install()?;
+    init_color_eyre()?;
 
-    let opts = Arc::new(load_config()?);
+    dotenvy::dotenv()?;
+    let opts = load_config()?;
     validate_config(&opts)?;
 
-    let cfg = configure(&opts).await?;
+    let pool = PgPool::connect(&opts.database_url).await?;
+    // Shared lock table structure to prevent schema changes.
+    let system_lock = PgLock::new_shared("_system");
+    let system_guard = system_lock.lock(pool.acquire().await?).await?;
+    // No need to lock namespace because write operations can be performed in parallel with read.
+
+    let (listener_handle, cfg) = configure(&opts, default_op_builder, pool.clone()).await?;
 
     let mut server = HttpServer::new({
         move || {
             App::new()
-                .wrap(NormalizePath::new(TrailingSlash::Trim))
+                .wrap(NormalizePath::new(TrailingSlash::Trim).use_redirects())
                 .wrap(TracingLogger::default())
                 .configure(cfg.clone())
         }
@@ -47,7 +63,16 @@ pub async fn main() -> Result<()> {
     for bind in &opts.bind {
         server = server.bind(bind)?;
     }
-    server.run().await?;
+    tokio::select! {
+        result = listener_handle => {
+            error!(?result, "Listener exited");
+        }
+        result = server.run() => {
+            warn!(?result, "Server exited");
+        }
+    }
+
+    system_guard.unlock().await?;
 
     Ok(())
 }

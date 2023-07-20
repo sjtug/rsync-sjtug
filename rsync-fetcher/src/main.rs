@@ -2,34 +2,41 @@
     clippy::module_name_repetitions,
     clippy::default_trait_access,
     clippy::future_not_send,
-    clippy::too_many_lines
+    clippy::too_many_lines,
+    clippy::await_holding_lock
 )]
+// Note: ensure that lock guards crossing await points does not overlap
 
 use std::sync::Arc;
 
+use chrono::Utc;
 use clap::Parser;
 use eyre::Result;
+use futures::FutureExt;
+use sqlx::PgPool;
+use tokio::sync::mpsc;
 use tracing::info;
 
-use rsync_core::redis_::{
-    acquire_instance_lock, commit_transfer, copy_index, get_latest_index, move_index, RedisOpts,
+use rsync_core::pg::{
+    change_revision_status, create_revision, ensure_repository, insert_task, RevisionStatus,
 };
-use rsync_core::s3::{create_s3_client, S3Opts};
-use rsync_core::utils::init_logger;
+use rsync_core::pg_lock::PgLock;
+use rsync_core::s3::{build_operator, S3Opts};
+use rsync_core::utils::{init_color_eyre, init_logger};
 
-use crate::index::generate_index_and_upload;
 use crate::opts::{Opts, RsyncOpts};
-use crate::plan::generate_transfer_plan;
+use crate::pg::{
+    analyse_objects, create_fl_table, drop_fl_table, insert_file_list_to_db, update_parent_ids,
+};
+use crate::plan::diff_and_apply;
 use crate::rsync::{finalize, start_handshake, TaskBuilders};
-use crate::symlink::apply_symlinks_n_directories;
-use crate::utils::{plan_stat, timestamp};
+use crate::utils::{flatten_err, plan_stat};
 
 mod consts;
-mod index;
 mod opts;
+mod pg;
 mod plan;
 mod rsync;
-mod symlink;
 #[cfg(test)]
 mod tests;
 mod utils;
@@ -37,139 +44,105 @@ mod utils;
 #[tokio::main]
 async fn main() -> Result<()> {
     init_logger();
-    color_eyre::install()?;
+    init_color_eyre()?;
 
+    dotenvy::dotenv()?;
     let opts = Opts::parse();
     let rsync_opts = RsyncOpts::from(&opts);
-    let redis_opts = RedisOpts::from(&opts);
     let s3_opts = S3Opts::from(&opts);
-    let redis_namespace = redis_opts.namespace.clone();
+    let namespace = &opts.namespace;
 
-    let redis = redis::Client::open(opts.redis)?;
-    let mut redis_conn = redis.get_async_connection().await?;
+    let pool = Arc::new(PgPool::connect(&opts.pg_url).await?);
+    // Shared lock table structure to prevent schema changes.
+    let system_lock = PgLock::new_shared("_system");
+    let system_guard = system_lock.lock(pool.acquire().await?).await?;
+    // Exclusively lock namespace to ensure only one write operation(fetch, migrate, gc) is running
+    // on the namespace.
+    let ns_lock = PgLock::new_exclusive(namespace);
+    let ns_guard = ns_lock.lock(pool.acquire().await?).await?;
 
-    let _lock = acquire_instance_lock(&redis, &redis_opts).await?;
-
-    let s3 = create_s3_client(&s3_opts).await;
+    let s3 = build_operator(&s3_opts)?;
 
     let handshake = start_handshake(&opts.src).await?;
     let mut conn = handshake.finalize(&rsync_opts.filters).await?;
 
     info!("fetching file list from rsync server.");
     let file_list = Arc::new(conn.recv_file_list().await?);
+    create_fl_table(namespace, &*pool).await?;
+    insert_file_list_to_db(namespace, &file_list, &*pool).await?;
 
     info!("generating transfer plan.");
-    let namespace = &redis_opts.namespace;
-    let latest_index = get_latest_index(&mut redis_conn, namespace)
-        .await?
-        .map(|x| format!("{namespace}:index:{x}"));
-    let transfer_plan = generate_transfer_plan(
-        &redis,
-        &file_list,
-        &redis_opts,
-        &latest_index,
-        opts.no_delta,
-    )
-    .await?;
+    ensure_repository(namespace, &*pool).await?;
+    let revision = create_revision(namespace, RevisionStatus::Partial, &*pool).await?;
+    // Run queries to
+    // 1. diff files to be transferred
+    // 2. copy unchanged entries from live indices to partial index
+    // 3. copy directories and symlinks from file list to partial index.
+    let (copied, transfer_items) = diff_and_apply(namespace, revision, &*pool).await?;
     info!(
-        downloads=%transfer_plan.downloads.len(),
-        copy_from_latest=%transfer_plan.copy_from_latest.len(),
-        stale=%transfer_plan.stale.len(),
+        downloads=%transfer_items.len(),
+        copied,
         "transfer plan generated."
     );
 
-    if !transfer_plan.stale.is_empty() {
-        // Move stale files in the partial index to the "partial-stale" index.
-        // These files were uploaded to S3 during last partial transfer, but are removed from remote
-        // rsync server.
-        info!("moving outdated files from last partial sync to partial-stale index.");
-        // On error this would leave some files in the partial index, but the partial index will be
-        // updated anyway during next transfer.
-        move_index(
-            &mut redis_conn,
-            &format!("{namespace}:partial"),
-            &format!("{namespace}:partial-stale"),
-            &transfer_plan.stale,
-        )
-        .await?;
-    }
-
-    if !transfer_plan.copy_from_latest.is_empty() {
-        info!("copying up-to-date files from latest index to partial index.");
-        // These files already exists in the latest index. Copy them to the partial index.
-        // On error this would leave some files in the partial index, but the partial index will be
-        // updated anyway during next transfer.
-        copy_index(
-            &mut redis_conn,
-            latest_index
-                .as_ref()
-                .expect("copy_from_latest is not empty, so latest_index must be Some"),
-            &format!("{namespace}:partial"),
-            &transfer_plan.copy_from_latest,
-        )
-        .await?;
-    }
-
-    // Update symlinks. No real files are transferred yet.
-    apply_symlinks_n_directories(
-        &mut redis_conn,
-        &redis_opts,
-        &file_list,
-        &transfer_plan.downloads,
-    )
-    .await?;
+    let (pg_tx, pg_rx) = mpsc::channel(10240);
+    let insert_handle = tokio::spawn({
+        let pool = pool.clone();
+        async move { insert_task(revision, pg_rx, &*pool).await }
+    });
 
     // Start the transfer. The transfer model is basically the same as the original rsync impl.
     let TaskBuilders {
         downloader,
-        mut generator,
-        mut receiver,
+        generator,
+        receiver,
         uploader,
         progress,
     } = conn.into_task_builders(
         s3.clone(),
-        s3_opts.clone(),
-        redis.get_multiplexed_async_connection().await?,
-        redis_opts,
+        opts.s3_prefix,
+        pg_tx,
         file_list.clone(),
         &opts.tmp_path,
     )?;
-    let stat = plan_stat(&file_list, &transfer_plan.downloads);
+    let stat = plan_stat(&file_list, &transfer_items);
     info!(?stat, "transfer plan stat.");
     progress.set_length(stat.total_bytes);
-    tokio::try_join!(
-        downloader.tasks(&transfer_plan.downloads),
-        generator.generate_task(&transfer_plan.downloads),
-        receiver.recv_task(),
-        uploader.upload_tasks(),
+    let transfer_items = Arc::new(transfer_items);
+    let (_, mut generator, mut receiver, _) = tokio::try_join!(
+        tokio::spawn({
+            let transfer_items = transfer_items.clone();
+            async move { downloader.tasks(&transfer_items).await }
+        })
+        .map(flatten_err),
+        tokio::spawn({
+            let transfer_items = transfer_items.clone();
+            async move { generator.generate_task(&transfer_items).await }
+        })
+        .map(flatten_err),
+        tokio::spawn(receiver.recv_task()).map(flatten_err),
+        tokio::spawn(uploader.upload_tasks()).map(flatten_err),
     )?;
     progress.finalize().await?;
 
-    let timestamp = timestamp();
+    info!("waiting for database insertion to finish.");
+    insert_handle.await??;
 
-    info!("generating listings.");
-    generate_index_and_upload(
-        &redis,
-        &redis_namespace,
-        &s3,
-        &s3_opts,
-        &opts.gateway_base,
-        &opts.repository,
-        timestamp,
-    )
-    .await?;
+    info!("generating index for directory listing.");
+    analyse_objects(&*pool).await?;
+    update_parent_ids(revision, &*pool).await?;
 
     info!("committing transfer.");
-    commit_transfer(
-        &mut redis.get_async_connection().await?,
-        &redis_namespace,
-        timestamp,
-    )
-    .await?;
+    change_revision_status(revision, RevisionStatus::Live, Some(Utc::now()), &*pool).await?;
 
     // Finalize rsync connection.
     let stats = finalize(&mut *generator, &mut *receiver).await?;
     info!(?stats, "transfer stats");
+
+    // Finalize db.
+    drop_fl_table(namespace, &*pool).await?;
+    system_guard.unlock().await?;
+    ns_guard.unlock().await?;
 
     Ok(())
 }

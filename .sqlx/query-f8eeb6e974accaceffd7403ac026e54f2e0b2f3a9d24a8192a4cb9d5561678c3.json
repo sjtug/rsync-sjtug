@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH parents AS (SELECT filename, substring(filename for rposition(filename, convert_to('/', 'UTF8')) - 1) AS parent\n                 FROM objects\n                 WHERE revision = $1\n                   AND filename LIKE '%/%'),\n     parents_id AS (SELECT parents.filename, id\n                    FROM objects\n                             INNER JOIN parents ON parents.parent = objects.filename\n                    WHERE revision = $1)\nUPDATE objects\nSET parent = parents_id.id\nFROM parents_id\nWHERE revision = $1\n  AND objects.filename = parents_id.filename;\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f8eeb6e974accaceffd7403ac026e54f2e0b2f3a9d24a8192a4cb9d5561678c3"
+}

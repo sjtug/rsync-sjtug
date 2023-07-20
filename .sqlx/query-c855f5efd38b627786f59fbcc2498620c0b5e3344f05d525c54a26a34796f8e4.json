@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT pg_advisory_unlock_shared($1) as \"_res!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "_res!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c855f5efd38b627786f59fbcc2498620c0b5e3344f05d525c54a26a34796f8e4"
+}

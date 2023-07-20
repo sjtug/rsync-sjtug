@@ -1,0 +1,10 @@
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <% for (href, item) in components { %>
+        <li class="breadcrumb-item"><a href="<%= href %>"><%= item %></a></li>
+        <% } %>
+        <li class="breadcrumb-item active <% for style in last_styles { %> <%- style %> <% } %>" aria-current="page">
+            <%= last_component %>
+        </li>
+    </ol>
+</nav>

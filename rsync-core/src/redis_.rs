@@ -1,20 +1,29 @@
+//! DEPRECATED: Redis-based implementation of the metadata server.
+//! Now only used in migration.
+
 use std::collections::VecDeque;
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
+use bincode::config::Configuration;
 use clean_path::Clean;
 use eyre::Result;
 use eyre::{bail, ensure};
 use futures::{stream, Stream, TryStreamExt};
-use redis::{aio, AsyncCommands, AsyncIter, Client, Commands, FromRedisValue, Script};
+use redis::{
+    aio, AsyncCommands, AsyncIter, Client, Commands, FromRedisValue, RedisError, RedisResult,
+    RedisWrite, Script, ToRedisArgs, Value,
+};
 use scan_fmt::scan_fmt;
 use tokio::task::JoinHandle;
 use tokio::time;
 use tracing::{error, instrument, warn};
 
 use crate::metadata::{MetaExtra, Metadata};
+
+const BINCODE_CONFIG: Configuration = bincode::config::standard();
 
 #[derive(Debug, Clone)]
 pub struct RedisOpts {
@@ -516,8 +525,46 @@ async fn follow_direct_link(
             MetaExtra::Directory => {
                 break Some(Target::Directory(
                     pwd.join(basename).as_os_str().as_bytes().to_vec(),
-                ))
+                ));
             }
         }
     })
+}
+
+impl FromRedisValue for Metadata {
+    fn from_redis_value(v: &Value) -> RedisResult<Self> {
+        match v {
+            Value::Data(data) => {
+                let (metadata, len) =
+                    bincode::decode_from_slice(data, BINCODE_CONFIG).map_err(|e| {
+                        RedisError::from((
+                            redis::ErrorKind::TypeError,
+                            "Invalid metadata",
+                            e.to_string(),
+                        ))
+                    })?;
+                if data.len() != len {
+                    return Err(RedisError::from((
+                        redis::ErrorKind::TypeError,
+                        "Invalid metadata (length mismatch)",
+                    )));
+                }
+                Ok(metadata)
+            }
+            _ => Err(RedisError::from((
+                redis::ErrorKind::TypeError,
+                "Response was of incompatible type",
+            ))),
+        }
+    }
+}
+
+impl ToRedisArgs for Metadata {
+    fn write_redis_args<W>(&self, out: &mut W)
+    where
+        W: ?Sized + RedisWrite,
+    {
+        let buf = bincode::encode_to_vec(self, BINCODE_CONFIG).expect("bincode encode failed");
+        out.write_arg(&buf);
+    }
 }

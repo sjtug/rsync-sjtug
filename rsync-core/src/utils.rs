@@ -1,9 +1,14 @@
 use std::convert::Infallible;
+use std::env;
 use std::fmt::LowerHex;
-use std::time::Duration;
+use std::future::Future;
+use std::ops::Deref;
+use std::task::{Context, Poll};
 
+use futures::FutureExt;
 #[cfg(feature = "percent-encoding")]
 use percent_encoding::{AsciiSet, CONTROLS};
+use tokio::task::JoinHandle;
 #[cfg(feature = "tests")]
 use tracing::level_filters::LevelFilter;
 use tracing_error::ErrorLayer;
@@ -65,6 +70,21 @@ pub fn test_init_logger() {
         .init();
 }
 
+/// Initialize color-eyre error handling, with `NO_COLOR` support.
+///
+/// # Errors
+/// Returns an error if `color-eyre` has already been initialized.
+pub fn init_color_eyre() -> eyre::Result<()> {
+    if env::var("NO_COLOR").is_ok() {
+        color_eyre::config::HookBuilder::new()
+            .theme(color_eyre::config::Theme::new())
+            .install()?;
+    } else {
+        color_eyre::install()?;
+    }
+    Ok(())
+}
+
 pub trait ToHex {
     fn as_hex(&self) -> HexWrapper<'_>;
 }
@@ -86,6 +106,7 @@ impl LowerHex for HexWrapper<'_> {
     }
 }
 
+#[allow(clippy::missing_errors_doc)]
 pub fn parse_ensure_end_slash(s: &str) -> Result<String, Infallible> {
     Ok(if s.ends_with('/') {
         s.to_string()
@@ -94,11 +115,34 @@ pub fn parse_ensure_end_slash(s: &str) -> Result<String, Infallible> {
     })
 }
 
-#[cfg(feature = "backon")]
-#[must_use]
-pub fn policy() -> impl backon::BackoffBuilder {
-    backon::ExponentialBuilder::default()
-        .with_min_delay(Duration::from_millis(300))
-        .with_max_delay(Duration::from_secs(3))
-        .with_max_times(10)
+/// Wrapper around `tokio::task::JoinHandle` that aborts the task when dropped.
+pub struct AbortJoinHandle<T>(JoinHandle<T>);
+
+impl<T> AbortJoinHandle<T> {
+    #[must_use]
+    pub fn new(handle: JoinHandle<T>) -> Self {
+        Self(handle)
+    }
+}
+
+impl<T> Deref for AbortJoinHandle<T> {
+    type Target = JoinHandle<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> Future for AbortJoinHandle<T> {
+    type Output = <JoinHandle<T> as Future>::Output;
+
+    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.poll_unpin(cx)
+    }
+}
+
+impl<T> Drop for AbortJoinHandle<T> {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }

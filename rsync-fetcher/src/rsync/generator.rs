@@ -65,7 +65,11 @@ impl DerefMut for Generator {
 }
 
 impl Generator {
-    pub async fn generate_task(&mut self, transfer_plan: &[TransferItem]) -> Result<()> {
+    pub async fn generate_task(mut self, transfer_plan: &[TransferItem]) -> Result<Self> {
+        self.generate_task_mut(transfer_plan).await?;
+        Ok(self)
+    }
+    pub async fn generate_task_mut(&mut self, transfer_plan: &[TransferItem]) -> Result<()> {
         info!("generator started.");
 
         info!("generate file phase 1");
@@ -83,8 +87,9 @@ impl Generator {
     async fn recv_generator(&mut self, transfer_plan: &[TransferItem]) -> Result<()> {
         let file_list = self.file_list.clone();
         let it = transfer_plan.iter().filter(|item| {
+            #[allow(clippy::cast_sign_loss)]
             let entry = &file_list[item.idx as usize];
-            item.blake2b_hash.is_none() && !ignore_mode(entry.mode, None::<()>)
+            item.blake2b.is_none() && !ignore_mode(entry.mode, None::<()>)
         });
         let mut async_it = stream::iter(it);
 
@@ -104,6 +109,7 @@ impl Generator {
                     self.pb.inc_pending(1);
                 }
                 Some(item) = async_it.next() => {
+                    #[allow(clippy::cast_sign_loss)]
                     let entry = &self.file_list[item.idx as usize];
                     let idx = entry.idx;
                     let path = Path::new(OsStr::from_bytes(&entry.name));

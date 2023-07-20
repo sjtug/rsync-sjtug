@@ -6,16 +6,14 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.3", features = ["derive", "env"] }
-color-eyre = "0.6"
 dotenvy = "0.15"
 eyre = "0.6"
 futures = "0.3"
-itertools = "0.10"
+itertools = "0.11"
 redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"] }
-rsync-core = { path = "../rsync-core", features = ["pg"] }
+rsync-core = { path = "../rsync-core", features = ["pg", "redis"] }
 scan_fmt = "0.2"
-sqlx = { version = "0.6.3", features = ["runtime-tokio-rustls", "migrate", "postgres", "chrono", "macros"] }
-time = "0.3"
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "migrate", "postgres", "chrono", "macros"] }
 tokio = { version = "1.28", features = ["full"] }
 tracing = "0.1"
 url = "2.3"

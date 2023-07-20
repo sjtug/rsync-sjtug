@@ -1,6 +1,5 @@
 use std::fmt::{Debug, Formatter};
 use std::ops::Add;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use blake2::Blake2b;
 use bytesize::ByteSize;
@@ -15,13 +14,6 @@ pub fn hash(data: &[u8]) -> [u8; 20] {
     let mut hasher = Blake2b::<U20>::default();
     hasher.update(data);
     hasher.finalize().into()
-}
-
-pub fn timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time is before UNIX epoch")
-        .as_secs()
 }
 
 pub fn ignore_mode(mode: u32, path: Option<impl Debug>) -> bool {
@@ -88,10 +80,11 @@ pub fn plan_stat(files: &[FileEntry], transfer_items: &[TransferItem]) -> Planne
     transfer_items
         .iter()
         .filter_map(|item| {
+            #[allow(clippy::cast_sign_loss)]
             let entry = &files[item.idx as usize];
             let path = entry.name_lossy();
             (!ignore_mode(entry.mode, Some(path))).then(|| {
-                if item.blake2b_hash.is_some() {
+                if item.blake2b.is_some() {
                     PlannedTransfer {
                         total_bytes: entry.len,
                         total_count: 1,
@@ -114,4 +107,12 @@ pub fn plan_stat(files: &[FileEntry], transfer_items: &[TransferItem]) -> Planne
         })
         .reduce(Add::add)
         .unwrap_or_default()
+}
+
+pub fn flatten_err<T, E1, E2>(t: Result<Result<T, E1>, E2>) -> eyre::Result<T>
+where
+    E1: Into<eyre::Report> + Send + Sync + 'static,
+    E2: Into<eyre::Report> + Send + Sync + 'static,
+{
+    t.map_err(Into::into)?.map_err(Into::into)
 }

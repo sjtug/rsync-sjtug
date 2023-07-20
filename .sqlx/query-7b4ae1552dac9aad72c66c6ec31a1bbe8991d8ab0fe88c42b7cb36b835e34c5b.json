@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH parent AS (SELECT id FROM objects WHERE filename = NULLIF($1, ''::bytea) AND revision = $2)\nSELECT filename, len, type as \"type: _\", modify_time\nFROM objects\nWHERE revision = $2\n  AND objects.parent = (SELECT id FROM parent)\nORDER BY type != 'directory', filename;\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "filename",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 1,
+        "name": "len",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "type: _",
+        "type_info": {
+          "Custom": {
+            "name": "filetype",
+            "kind": {
+              "Enum": [
+                "regular",
+                "directory",
+                "symlink"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "modify_time",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7b4ae1552dac9aad72c66c6ec31a1bbe8991d8ab0fe88c42b7cb36b835e34c5b"
+}

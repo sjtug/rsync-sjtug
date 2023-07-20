@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT objects.filename, objects.modify_time, objects.type as \"type: FileType\", objects.target\nFROM objects\nWHERE objects.revision = $1\n    AND objects.type IN ('directory', 'symlink')\n    AND (objects.filename = ANY ($2::bytea[]))\nORDER BY objects.filename\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "filename",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 1,
+        "name": "modify_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "type: FileType",
+        "type_info": {
+          "Custom": {
+            "name": "filetype",
+            "kind": {
+              "Enum": [
+                "regular",
+                "directory",
+                "symlink"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "target",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "ByteaArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "f24520b85bb212db4f94d755ed316a874cb8779ac9791f044ffb2bc9fb0e83cd"
+}

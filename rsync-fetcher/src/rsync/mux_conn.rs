@@ -2,14 +2,13 @@ use std::path::Path;
 use std::sync::Arc;
 
 use eyre::{Context, Result};
-use redis::aio;
+use opendal::Operator;
 use tempfile::TempDir;
 use tokio::io::BufReader;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::{mpsc, Semaphore};
 
-use rsync_core::redis_::RedisOpts;
-use rsync_core::s3::S3Opts;
+use rsync_core::metadata::Metadata;
 
 use crate::consts::{BASIS_BUFFER_LIMIT, UPLOAD_CONN};
 use crate::rsync::downloader::Downloader;
@@ -36,10 +35,9 @@ impl MuxConn {
     }
     pub fn into_task_builders(
         self,
-        s3: aws_sdk_s3::Client,
-        s3_opts: S3Opts,
-        redis: aio::MultiplexedConnection,
-        redis_opts: RedisOpts,
+        s3: Operator,
+        s3_prefix: String,
+        pg_tx: mpsc::Sender<(Vec<u8>, Metadata)>,
         file_list: Arc<Vec<FileEntry>>,
         temp_dir: &Path,
     ) -> Result<TaskBuilders> {
@@ -51,7 +49,7 @@ impl MuxConn {
         let downloader = Downloader::new(
             file_list.clone(),
             s3.clone(),
-            s3_opts.clone(),
+            s3_prefix.clone(),
             basis_dir.path().to_path_buf(),
             basis_tx,
             progress.clone(),
@@ -73,15 +71,7 @@ impl MuxConn {
             permits,
             progress.clone(),
         );
-        let uploader = Uploader::new(
-            upload_rx,
-            file_list,
-            s3,
-            s3_opts,
-            redis,
-            redis_opts,
-            progress.clone(),
-        );
+        let uploader = Uploader::new(upload_rx, file_list, s3, s3_prefix, pg_tx, progress.clone());
         Ok(TaskBuilders {
             downloader,
             generator,

@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1, shrink-to-fit=no" name="viewport">
+    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.5.3/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .jumbotron {
+            background-color: #fff
+        }
+    </style>
+
+    <title><%= code %> - SJTUG Mirror Index</title>
+</head>
+
+<body>
+<div class="container mt-3">
+    <%+ navbar %>
+    <div class="jumbotron">
+        <div class="container">
+            <p class="text-muted text-uppercase font-italic m-0"><%= code %> <%= code_msg %></p>
+            <h1 class="display-4 mb-3">
+                <% if code == 404 { %>
+                哎呀！文件不见了
+                <% } else { %>
+                喔唷！崩溃啦
+                <% } %>
+            </h1>
+            <p class="text-muted lead mb-1">
+                <% if code == 404 { %>
+                这真是让人尴尬，我们找不到您想要的文件。
+                <% } else { %>
+                这真是让人尴尬，我们的服务器好像出了点问题。
+                <% } %>
+            </p>
+            <p class="text-muted lead pb-3">如果您认为这是不正常的，请前往
+                <a href="https://github.com/sjtug/mirror-requests">sjtug/mirror-requests</a>
+                贴上详细错误向我们报告</p>
+            <a aria-controls="whatHappened" aria-expanded="false" class="small" data-toggle="collapse"
+               href="#whatHappened">怎么会事呢？(详细错误)</a>
+            <div class="collapse py-2" id="whatHappened">
+                <pre><code><%= detail %></code></pre>
+            </div>
+        </div>
+    </div>
+    <%+ footer %>
+</div>
+<script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.6.4/jquery.slim.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.5.3/js/bootstrap.min.js"></script>
+</body>
+
+</html>

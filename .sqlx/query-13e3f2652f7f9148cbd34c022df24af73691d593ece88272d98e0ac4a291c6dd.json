@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO revisions(repository, created_at, status) VALUES ($1, now(), 'partial')\n                RETURNING revision\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "revision",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "13e3f2652f7f9148cbd34c022df24af73691d593ece88272d98e0ac4a291c6dd"
+}

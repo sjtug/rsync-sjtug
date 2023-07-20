@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1, shrink-to-fit=no" name="viewport">
+    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.5.3/css/bootstrap.min.css" rel="stylesheet">
+
+    <title>Index of <%= title %>/ - SJTUG Mirror Index</title>
+</head>
+
+<body>
+<div class="container mt-3">
+    <%+ navbar %>
+    <table class="table table-sm table-borderless">
+        <thead>
+        <tr>
+            <th class="w-50" scope="col">名称</th>
+            <th class="w-25 text-right" scope="col">大小</th>
+            <th class="text-right d-none d-sm-block" scope="col">修改时间</th>
+        </tr>
+        </thead>
+        <tbody>
+        <% for ListingEntry{filename, len, modify_time, is_dir} in entries { %>
+        <tr>
+            <td>
+                <a href="<%- href(cwd) | disp %>/<%- href(filename) | disp %>">
+                    <%= lossy_display(filename) | disp %><% if *is_dir { %>/<% } %>
+                </a>
+            </td>
+            <td class="text-right">
+                <% if let Some(len) = len { %>
+                <%= size(*len) | disp %>
+                <% } else { %>
+                -
+                <% } %>
+            </td>
+            <td class="d-none d-sm-block text-right">
+                <% if let Some(modify_time) = modify_time { %>
+                <%= datetime(*modify_time) | disp %>
+                <% } else { %>
+                -
+                <% } %>
+            </td>
+        </tr>
+        <% } %>
+        </tbody>
+    </table>
+    <%+ footer %>
+</div>
+</body>
+
+</html>
