@@ -1,65 +1,106 @@
-use actix_web::web::{Data, Path, Redirect};
-use actix_web::{Either, HttpResponse, Responder};
-use bstr::BStr;
-use tracing::debug;
+use std::time::{Duration, Instant};
 
-use rsync_core::redis_::Target;
-use rsync_core::utils::{ToHex, PATH_ASCII_SET};
+use actix_web::web::Data;
+use actix_web::{Either, HttpRequest, Responder};
+use chrono::Utc;
+use eyre::eyre;
+use futures::FutureExt;
+use opendal::Operator;
+use sqlx::PgPool;
+use tracing_actix_web::RequestId;
 
+use crate::app::Prefix;
+use crate::cache::NSCache;
 use crate::opts::Endpoint;
+use crate::path_resolve::resolve;
+use crate::pg::{revision_stats, Revision};
+use crate::render::{render_internal_error, render_revision_stats};
 use crate::state::State;
-use crate::utils::{ReportExt, ReportWrapper};
 
 /// Main handler.
-pub async fn handler(
+#[allow(clippy::too_many_arguments)]
+pub async fn main_handler(
     endpoint: Data<Endpoint>,
+    prefix: Data<Prefix>,
     state: Data<State>,
-    path: Path<String>,
+    db: Data<PgPool>,
+    op: Data<Operator>,
+    cache: Data<NSCache>,
+    request_id: RequestId,
+    req: HttpRequest,
 ) -> impl Responder {
-    let path: Vec<_> =
-        percent_encoding::percent_decode(path.trim_start_matches('/').as_bytes()).collect();
+    let prefix = prefix.as_str();
+    let path = req.match_info().get("path").map_or_else(Vec::new, |path| {
+        percent_encoding::percent_decode(path.trim_start_matches('/').as_bytes()).collect()
+    });
 
-    debug!(path=?BStr::new(&path), "incoming request");
+    let namespace = &endpoint.namespace;
+    let s3_prefix = &endpoint.s3_prefix;
+    let Some(Revision { revision, generated_at }) = state.revision() else {
+        return Either::Left(render_internal_error(
+            &path,
+            prefix,
+            None,
+            Utc::now(),
+            Duration::default(),
+            &eyre!("no revision available"),
+            request_id,
+        ));
+    };
 
-    if path.is_empty() {
-        Either::Left(index(&endpoint, &state))
-    } else {
-        Either::Right(file_handler(&endpoint, &state, &path).await)
+    let query_start = Instant::now();
+    let resolved = match cache
+        .get_or_insert(
+            &path,
+            resolve(namespace, &path, revision, s3_prefix, &**db, &op).boxed_local(),
+        )
+        .await
+    {
+        Ok(resolved) => resolved,
+        Err(e) => {
+            let query_time = query_start.elapsed();
+            return Either::Left(render_internal_error(
+                &path,
+                prefix,
+                Some(revision),
+                Utc::now(),
+                query_time,
+                &e,
+                request_id,
+            ));
+        }
+    };
+    let query_time = query_start.elapsed();
+
+    Either::Right(resolved.to_responder(&path, prefix, revision, generated_at, query_time))
+}
+
+pub async fn rev_handler(
+    endpoint: Data<Endpoint>,
+    prefix: Data<Prefix>,
+    db: Data<PgPool>,
+    request_id: RequestId,
+) -> impl Responder {
+    let prefix = prefix.as_str();
+    let mut conn = db.acquire().await.unwrap();
+
+    let namespace = &endpoint.namespace;
+
+    let query_start = Instant::now();
+    let try_stats = revision_stats(namespace, &mut *conn).await;
+
+    let elapsed = query_start.elapsed();
+
+    match try_stats {
+        Ok(stats) => Either::Left(render_revision_stats(&stats, Utc::now(), elapsed, prefix)),
+        Err(e) => Either::Right(render_internal_error(
+            b"_revisions",
+            prefix,
+            None,
+            Utc::now(),
+            elapsed,
+            &e,
+            request_id,
+        )),
     }
-}
-
-/// Handler for index.
-fn index(endpoint: &Endpoint, state: &State) -> impl Responder {
-    Ok::<_, ReportWrapper>(state.latest_index().map_or_else(
-        || Either::Right(HttpResponse::NotFound()),
-        |latest| {
-            Either::Left(Redirect::to(format!(
-                "{}/listing-{latest}/index.html",
-                endpoint.s3_website
-            )))
-        },
-    ))
-}
-
-/// Handler for file requests.
-async fn file_handler(endpoint: &Endpoint, state: &State, path: &[u8]) -> impl Responder {
-    let target = state.lookup_target_of_path(path).await.into_resp_err()?;
-    Ok::<_, ReportWrapper>(match target {
-        None => Either::Left(HttpResponse::NotFound()),
-        Some(Target::File(hash)) => Either::Right(Redirect::to(format!(
-            "{}/{:x}",
-            endpoint.s3_website,
-            hash.as_hex()
-        ))),
-        Some(Target::Directory(path)) => state.latest_index().map_or_else(
-            || Either::Left(HttpResponse::NotFound()),
-            |latest| {
-                let path = percent_encoding::percent_encode(&path, PATH_ASCII_SET);
-                Either::Right(Redirect::to(format!(
-                    "{}/listing-{latest}/{path}/index.html",
-                    endpoint.s3_website
-                )))
-            },
-        ),
-    })
 }

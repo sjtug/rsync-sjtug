@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT objects.filename\nFROM objects\n         LEFT JOIN objects AS o ON objects.filename = o.filename AND o.revision = $2\nWHERE objects.revision = $1\n  AND (objects.filename = ANY ($3::bytea[]))\n  AND (o.revision IS NULL OR objects.filename != o.filename OR objects.len != o.len OR\n       objects.modify_time != o.modify_time OR objects.type != o.type OR objects.blake2b != o.blake2b OR\n       objects.target != o.target);\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "filename",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4",
+        "ByteaArray"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "6c1968bd371efdd55428d724dd77f465ee23236fecca801af177917bf43eaa52"
+}

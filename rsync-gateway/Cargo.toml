@@ -6,26 +6,37 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4.3"
-aws-config = "0.54"
-aws-sdk-s3 = "0.24"
-bincode = "=2.0.0-rc.3"
+actix-web-lab = "0.19"
+arc-swap = "1.6"
+atomic = "0.5"
+bigdecimal = "0.4"
 bstr = "1.2"
-clap = { version = "4.1", features = ["derive"] }
-color-eyre = "0.6"
+chrono = { version = "0.4", features = ["rkyv"] }
+dotenvy = "0.15"
+either = "1.8"
 eyre = "0.6"
+figment = { version = "0.10", features = ["toml", "env"] }
 futures = "0.3"
+get-size = { version = "0.1", features = ["derive"] }
+humansize = "2.1"
+itertools = "0.11"
+moka = { version = "0.11", features = ["future"] }
+opendal = "0.38"
 percent-encoding = "2.2"
-redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"] }
-rsync-core = { path = "../rsync-core", features = ["percent-encoding"] }
-scan_fmt = "0.2"
+rkyv = "0.7"
+rsync-core = { path = "../rsync-core", features = ["percent-encoding", "pg", "s3"] }
+sailfish = { version = "0.7", default-features = false, features = ["derive", "perf-inline"] }
+scopeguard = "1.1"
 serde = { version = "1.0", features = ["derive"] }
-tap = "1.0"
+serde_json = "1.0"
+sqlx = { version = "0.7", features = ["bigdecimal", "runtime-tokio-rustls", "postgres", "chrono", "macros"] }
+thiserror = "1.0"
 tokio = { version = "1.25", features = ["rt"] }
-toml = "0.7"
 tracing = "0.1"
 tracing-actix-web = "0.7"
-url = { version = "2.3", features = ["serde"] }
+zstd = "0.12"
 
 [dev-dependencies]
+async-trait = "0.1"
 maplit = "1.0"
 rsync-core = { path = "../rsync-core", features = ["tests"] }

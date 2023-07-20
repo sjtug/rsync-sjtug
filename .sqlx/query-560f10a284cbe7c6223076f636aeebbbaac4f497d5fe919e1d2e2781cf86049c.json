@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE revisions\n        SET status = $1\n        WHERE revision = $2;\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "revision_status",
+            "kind": {
+              "Enum": [
+                "partial",
+                "live",
+                "stale"
+              ]
+            }
+          }
+        },
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "560f10a284cbe7c6223076f636aeebbbaac4f497d5fe919e1d2e2781cf86049c"
+}

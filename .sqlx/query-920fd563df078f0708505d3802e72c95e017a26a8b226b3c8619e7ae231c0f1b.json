@@ -1,0 +1,39 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO objects(revision, filename, len, modify_time, type, blake2b, target)\nSELECT *\nFROM UNNEST(array_fill($1::INTEGER, $2), $3::BYTEA[], $4::BIGINT[], $5::TIMESTAMPTZ[], $6::filetype[], $7::BYTEA[],\n            $8::BYTEA[])",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4Array",
+        "ByteaArray",
+        "Int8Array",
+        "TimestamptzArray",
+        {
+          "Custom": {
+            "name": "_filetype",
+            "kind": {
+              "Array": {
+                "Custom": {
+                  "name": "filetype",
+                  "kind": {
+                    "Enum": [
+                      "regular",
+                      "directory",
+                      "symlink"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "ByteaArray",
+        "ByteaArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "920fd563df078f0708505d3802e72c95e017a26a8b226b3c8619e7ae231c0f1b"
+}

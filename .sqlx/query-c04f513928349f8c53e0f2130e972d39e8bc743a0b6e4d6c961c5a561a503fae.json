@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH ns AS (SELECT id FROM repositories WHERE name = $1)\nSELECT revision, created_at\nfrom revisions\nWHERE repository IN (SELECT id FROM ns)\n  AND status = 'live'\nORDER BY revision DESC\nLIMIT 1;\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "revision",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "c04f513928349f8c53e0f2130e972d39e8bc743a0b6e4d6c961c5a561a503fae"
+}

@@ -1,0 +1,1 @@
+This directory contains Dockerfile that builds a PostgreSQL image with pg_cron extension installed and configured.

@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT type as \"type: _\", blake2b, target\nFROM objects\nWHERE revision = $1\n  AND filename = $2;\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "type: _",
+        "type_info": {
+          "Custom": {
+            "name": "filetype",
+            "kind": {
+              "Enum": [
+                "regular",
+                "directory",
+                "symlink"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "blake2b",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 2,
+        "name": "target",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "71081138855e0331b6b2591528a9ec97e37f6e91f5ca80df1c6737824e33065d"
+}

@@ -6,41 +6,35 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1"
-aws-config = "0.54"
-aws-sdk-s3 = "0.24"
-backon = "0.4"
 base64 = "0.21"
-bincode = "=2.0.0-rc.3"
 blake2 = "0.10"
 bytesize = "1.1"
 chrono = "0.4"
-clap = { version = "4.1", features = ["derive"] }
+clap = { version = "4.1", features = ["derive", "env"] }
 clean-path = "0.2"
-color-eyre = "0.6"
-dashmap = "5.4"
+dashmap = "5.5"
 digest = "0.10"
-either = "1.8"
+dotenvy = "0.15"
 eyre = "0.6"
 flume = "0.10"
 futures = "0.3"
-html-escape = "0.2"
 indicatif = "0.17"
-itertools = "0.10"
+itertools = "0.11"
 md4 = "0.10"
 num = "0.4"
+opendal = "0.38"
 percent-encoding = "2.2"
-pin-project = "1.0"
-rand = "0.8"
-redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"] }
-rsync-core = { path = "../rsync-core", features = ["backon", "s3", "percent-encoding"] }
+rsync-core = { path = "../rsync-core", features = ["s3", "percent-encoding", "pg"] }
 scan_fmt = "0.2"
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "macros"] }
 tap = "1.0"
 tempfile = "3.3"
 tokio = { version = "1.25", features = ["full"] }
+tokio-util = { version = "0.7", features = ["compat"] }
 tracing = "0.1"
 unix_mode = "0.1"
 url = "2.3"
-zeroize = { version = "1.6", features=["derive"] }
+zeroize = { version = "1.6", features = ["derive"] }
 
 [dev-dependencies]
 rsync-core = { path = "../rsync-core", features = ["tests"] }

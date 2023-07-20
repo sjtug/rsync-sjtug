@@ -121,7 +121,7 @@ impl<T: AsyncBufRead + Unpin> AsyncRead for EnvelopeRead<T> {
                         let b1 = b1 as usize;
                         let b2 = b2 as usize;
                         let b3 = b3 as usize;
-                        self.frame_remaining = b1 + b2 * 0x100 + b3 * 0x100_00_usize;
+                        self.frame_remaining = b1 + b2 * 0x100 + b3 * 0x0001_0000_usize;
                         trace!("Frame {} {}", b4, self.frame_remaining);
                         match b4 {
                             7 => (),

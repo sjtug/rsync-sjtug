@@ -5,3 +5,4 @@ cross.sh
 test.sh
 test-gc.sh
 .env
+postgres/data

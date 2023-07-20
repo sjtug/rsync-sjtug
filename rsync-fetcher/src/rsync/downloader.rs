@@ -1,4 +1,6 @@
-use std::fmt::{Debug, Display, Formatter};
+#![allow(clippy::cast_sign_loss)] // indices are unsigned
+
+use std::fmt::{Debug, Formatter};
 use std::io::SeekFrom;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -6,12 +8,12 @@ use std::sync::Arc;
 use eyre::{bail, eyre, Result};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, TryStreamExt};
+use opendal::{ErrorKind, Operator};
 use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncSeekExt, BufReader};
+use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
 use tracing::{debug, warn};
 
-use rsync_core::s3::S3Opts;
 use rsync_core::utils::ToHex;
 
 use crate::consts::{BASIS_BUFFER_LIMIT, DOWNLOAD_CONN};
@@ -22,8 +24,8 @@ use crate::utils::{hash, ignore_mode};
 
 pub struct Downloader {
     file_list: Arc<Vec<FileEntry>>,
-    s3: aws_sdk_s3::Client,
-    s3_opts: S3Opts,
+    s3: Operator,
+    s3_prefix: String,
     basis_dir: PathBuf,
     basis_tx: mpsc::Sender<(u32, File)>,
     pb: ProgressDisplay,
@@ -32,8 +34,8 @@ pub struct Downloader {
 impl Downloader {
     pub fn new(
         file_list: Arc<Vec<FileEntry>>,
-        s3: aws_sdk_s3::Client,
-        s3_opts: S3Opts,
+        s3: Operator,
+        s3_prefix: String,
         basis_dir: PathBuf,
         basis_tx: mpsc::Sender<(u32, File)>,
         pb: ProgressDisplay,
@@ -41,7 +43,7 @@ impl Downloader {
         Self {
             file_list,
             s3,
-            s3_opts,
+            s3_prefix,
             basis_dir,
             basis_tx,
             pb,
@@ -83,15 +85,20 @@ impl Downloader {
         debug!("basis generator started");
 
         for item in transfer_plan {
-            let Some(blake2b_hash) = &item.blake2b_hash else { continue };
+            let Some(blake2b_hash) = &item.blake2b else { continue; };
 
             let entry = &self.file_list[item.idx as usize];
             if ignore_mode(entry.mode, None::<()>) {
+                warn!(
+                    name = %entry.name_lossy(),
+                    mode = entry.mode,
+                    "BUG: planner returns an entry with ignored mode"
+                );
                 continue;
             }
 
             tx.send_async(DownloadEntry {
-                idx: item.idx,
+                idx: item.idx as u32,
                 blake2b_hash,
                 path: &entry.name,
             })
@@ -123,34 +130,19 @@ impl Downloader {
                 .truncate(true)
                 .open(&basis_path)
                 .await?;
-            let try_obj = self
-                .s3
-                .get_object()
-                .bucket(&self.s3_opts.bucket)
-                .key(format!(
-                    "{}{:x}",
-                    self.s3_opts.prefix,
-                    entry.blake2b_hash.as_hex()
-                ))
-                .send()
-                .await;
-            match try_obj {
-                Ok(obj) => {
-                    let mut body = BufReader::new(obj.body.into_async_read());
-                    tokio::io::copy(&mut body, &mut basis_file).await?;
+            let key = format!("{}{:x}", self.s3_prefix, entry.blake2b_hash.as_hex());
+            match self.s3.reader(&key).await {
+                Ok(mut rd) => {
+                    tokio::io::copy(&mut rd, &mut basis_file).await?;
                 }
-                Err(e) => {
-                    let e = e.into_service_error();
-                    if e.is_no_such_key() {
-                        warn!(
-                            ?entry,
-                            "INCONSISTENCY: basis file exists in metadata but not present in S3. \
-                            Fallback to full file download"
-                        );
-                    } else {
-                        bail!(e);
-                    }
+                Err(e) if e.kind() == ErrorKind::NotFound => {
+                    warn!(
+                        ?entry,
+                        "INCONSISTENCY: basis file exists in metadata but not present in S3. \
+                        Fallback to full file download"
+                    );
                 }
+                Err(e) => bail!(e),
             }
 
             basis_file.seek(SeekFrom::Start(0)).await?;

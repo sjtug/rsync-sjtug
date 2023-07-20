@@ -6,34 +6,27 @@ edition = "2021"
 
 [features]
 default = []
-s3 = ["aws-config", "aws-sdk-s3", "url"]
-s3-tests = ["s3", "tests", "aws-credential-types", "aws-sdk-s3/test-util", "s3s", "s3s-aws", "s3s-fs", "tempfile"]
+s3 = ["opendal"]
+#s3-tests = ["s3", "tests", "aws-credential-types", "aws-sdk-s3/test-util", "s3s", "s3s-aws", "s3s-fs", "tempfile"]
 tests = []
-pg = ["once_cell", "sqlx", "blake2"]
+pg = ["sqlx", "blake2", "itertools"]
+redis = ["dep:redis", "clean-path", "scan_fmt", "bincode"]
 
 [dependencies]
-aws-config = { version = "0.54", optional = true }
-aws-credential-types = { version = "0.54", optional = true }
-aws-sdk-s3 = { version = "0.24", optional = true }
-backon = { version = "0.4", optional = true }
-bincode = "=2.0.0-rc.3"
+bincode = { version = "=2.0.0-rc.3", optional = true }
 blake2 = { version = "0.10", optional = true }
-clean-path = "0.2"
-either = "1.8"
+clean-path = { version = "0.2", optional = true }
+color-eyre = "0.6"
 eyre = "0.6"
 futures = "0.3"
-once_cell = { version = "1.18", optional = true }
+itertools = { version = "0.11", optional = true }
+opendal = { version = "0.38", features = ["layers-tracing"], optional = true }
 percent-encoding = { version = "2.2", optional = true }
 rand = "0.8"
-redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"] }
-s3s = { version = "0.4", optional = true }
-s3s-aws = { version = "0.4", optional = true }
-s3s-fs = { version = "0.4", optional = true }
-scan_fmt = "0.2"
-sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "postgres"], optional = true }
-tempfile = { version = "3.3", optional = true }
+redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"], optional = true }
+scan_fmt = { version = "0.2", optional = true }
+sqlx = { version = "0.7", features = ["bigdecimal", "runtime-tokio-rustls", "postgres", "chrono", "macros"], optional = true }
 tokio = { version = "1.25", features = ["full"] }
 tracing = "0.1"
 tracing-error = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-url = { version = "2.3", optional = true }

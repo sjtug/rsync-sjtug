@@ -1,0 +1,63 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "-- revision stats page\nWITH revs AS (SELECT revision, status, created_at, completed_at\n              FROM revisions\n              WHERE repository = (SELECT id FROM repositories WHERE name = $1))\nSELECT revs.revision, status AS \"status: _\", created_at, completed_at - created_at AS \"elapsed\", count, sum\nFROM revs\n         LEFT JOIN revision_stats ON revs.revision = revision_stats.revision\nWHERE revs.status != 'stale'\nORDER BY revs.revision;\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "revision",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "status: _",
+        "type_info": {
+          "Custom": {
+            "name": "revision_status",
+            "kind": {
+              "Enum": [
+                "partial",
+                "live",
+                "stale"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "elapsed",
+        "type_info": "Interval"
+      },
+      {
+        "ordinal": 4,
+        "name": "count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "sum",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      null,
+      true,
+      true
+    ]
+  },
+  "hash": "fd33001019cc3c70d10e5a2ca6bc93208c91d0a04dfc43ce263639bc8f379dfa"
+}

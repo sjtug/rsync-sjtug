@@ -87,7 +87,11 @@ struct RecvResult {
 }
 
 impl Receiver {
-    pub async fn recv_task(&mut self) -> Result<()> {
+    pub async fn recv_task(mut self) -> Result<Self> {
+        self.recv_task_mut().await?;
+        Ok(self)
+    }
+    pub async fn recv_task_mut(&mut self) -> Result<()> {
         info!("receiver started.");
         let mut phase = 0;
         loop {

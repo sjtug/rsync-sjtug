@@ -1,12 +1,15 @@
 bind = ["127.0.0.1:8080", "[::1]:8080"]
+s3_url = ""
+s3_region = ""
 update_interval = 300
+database_url = ""
 
 [endpoints.fedora]
-s3_website = "http://s3/bucket/fedora"
-redis = "redis://localhost:6379/0"
-redis_namespace = "fedora"
+s3_bucket = "rsync"
+s3_prefix = "fedora"
+namespace = "fedora"
 
 [endpoints.debian]
-s3_website = "http://s3/bucket/debian"
-redis = "redis://localhost:6379/0"
-redis_namespace = "debian"
+s3_bucket = "rsync"
+s3_website = "debian"
+namespace = "debian"

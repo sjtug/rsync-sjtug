@@ -1,0 +1,51 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT filename, len, type as \"type: _\", modify_time\nFROM objects\nWHERE revision = $1\n  AND objects.parent IS NULL\nORDER BY type != 'directory', filename;\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "filename",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 1,
+        "name": "len",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "type: _",
+        "type_info": {
+          "Custom": {
+            "name": "filetype",
+            "kind": {
+              "Enum": [
+                "regular",
+                "directory",
+                "symlink"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "modify_time",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fea127cc8ed7f3b99137fa279ca38bf9c489ffa93ea7bdf0852ca04e4f82af9e"
+}
