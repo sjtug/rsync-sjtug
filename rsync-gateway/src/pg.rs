@@ -60,7 +60,7 @@ pub async fn entry_of_path<'a>(
 }
 
 /// Revision.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Revision {
     pub revision: i32,
     pub generated_at: DateTime<Utc>,

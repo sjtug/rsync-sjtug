@@ -2,7 +2,8 @@
     clippy::module_name_repetitions,
     clippy::default_trait_access,
     clippy::future_not_send,
-    clippy::too_many_lines
+    clippy::too_many_lines,
+    clippy::redundant_pub_crate
 )]
 
 use actix_web::middleware::TrailingSlash;

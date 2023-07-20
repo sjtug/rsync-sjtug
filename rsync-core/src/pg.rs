@@ -185,6 +185,29 @@ pub async fn create_revision<'a>(
     .await?)
 }
 
+#[cfg(feature = "tests")]
+#[instrument(skip(db))]
+pub async fn create_revision_at<'a>(
+    namespace: &str,
+    status: RevisionStatus,
+    created_at: DateTime<Utc>,
+    db: impl Acquire<'a, Database = Postgres>,
+) -> Result<i32> {
+    let mut conn = db.acquire().await?;
+    Ok(sqlx::query_scalar!(
+        r#"
+        INSERT INTO revisions (repository, created_at, status)
+        VALUES ((SELECT id FROM repositories WHERE name = $1), $2, $3)
+        RETURNING revision;
+        "#,
+        namespace,
+        created_at,
+        status as _
+    )
+    .fetch_one(&mut *conn)
+    .await?)
+}
+
 #[instrument(skip(db))]
 pub async fn change_revision_status<'a>(
     revision: i32,
