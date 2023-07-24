@@ -26,6 +26,30 @@ jobs:
       - name: Run Clippy Lints
         run: cargo clippy --workspace --all-targets --all-features --tests
 
+  test-prop:
+    name: Test (proptest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Setup Cargo Toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Java
+        uses: actions/setup-java@v2
+        with:
+          distribution: 'liberica'
+          java-version: '17'
+          java-package: 'jre'
+      - uses: Swatinem/rust-cache@v2
+        name: Rust Cache
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+      - name: Install just
+        uses: taiki-e/install-action@just
+      - name: Running Tests
+        run: just test-prop-all
+
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -40,6 +64,8 @@ jobs:
         name: Rust Cache
       - name: Install nextest
         uses: taiki-e/install-action@nextest
+      - name: Install just
+        uses: taiki-e/install-action@just
       - name: Install sqlx-cli
         uses: taiki-e/install-action@v2
         with:
@@ -69,6 +95,6 @@ jobs:
         env:
           DATABASE_URL: postgresql://rsync-sjtug:postgres@localhost:5432/rsync-sjtug
       - name: Running Tests
-        run: cargo nextest run --workspace
+        run: just test-all
         env:
             DATABASE_URL: postgresql://rsync-sjtug:postgres@localhost:5432/rsync-sjtug

@@ -97,6 +97,10 @@ pub fn validate_config(opts: &Opts) -> Result<()> {
         bail!("Endpoint prefix cannot be empty");
     }
 
+    if opts.endpoints.keys().any(|prefix| prefix.starts_with('/')) {
+        bail!("Endpoint prefix cannot start with '/'");
+    }
+
     if !opts.endpoints.keys().all_unique() {
         bail!("Endpoint prefix must be unique");
     }

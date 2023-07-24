@@ -289,10 +289,13 @@ impl Expiry<Vec<u8>, Arc<MaybeCompressed>> for ExpiryPolicy {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::explicit_deref_methods)]
+
     use std::future::ready;
 
     use eyre::eyre;
-    use proptest::{prop_assert_eq, prop_assume};
+    use proptest::strategy::{Just, Strategy};
+    use proptest::{prop_assert_eq, prop_assume, prop_oneof};
     use proptest_derive::Arbitrary;
     use rstest::rstest;
     use test_strategy::proptest;
@@ -325,7 +328,7 @@ mod tests {
     }
 
     #[proptest(async = "tokio")]
-    async fn must_ok_refl(key: Vec<u8>, resolved: Resolved, invalidate: InvalidateLevel) {
+    async fn must_ok_refl_prop(key: Vec<u8>, resolved: Resolved, invalidate: InvalidateLevel) {
         let cache = NSCache::new_with_sync_l2();
         let result = cache
             .get_or_insert(&key, ready(Ok(resolved.clone())))
@@ -344,17 +347,20 @@ mod tests {
         prop_assert_eq!(&*result, &resolved);
     }
 
+    fn level_no_all_strategy() -> impl Strategy<Value = InvalidateLevel> {
+        prop_oneof![Just(InvalidateLevel::L1), Just(InvalidateLevel::None)]
+    }
+
     #[proptest(async = "tokio")]
-    async fn must_ok2_refl(
+    async fn must_ok2_refl_prop(
         key1: Vec<u8>,
         resolved1: Resolved,
         key2: Vec<u8>,
         resolved2: Resolved,
         insert_in_first_pass: bool,
-        invalidate: InvalidateLevel,
+        #[strategy(level_no_all_strategy())] invalidate: InvalidateLevel,
     ) {
         prop_assume!(key1 != key2);
-        prop_assume!(invalidate != InvalidateLevel::All);
         let cache = NSCache::new_with_sync_l2();
         cache
             .get_or_insert(&key1, ready(Ok(resolved1)))

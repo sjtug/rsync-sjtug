@@ -44,7 +44,7 @@ pub async fn main_handler(
             Utc::now(),
             Duration::default(),
             &eyre!("no revision available"),
-            request_id,
+            &request_id,
         ));
     };
 
@@ -66,7 +66,7 @@ pub async fn main_handler(
                 Utc::now(),
                 query_time,
                 &e,
-                request_id,
+                &request_id,
             ));
         }
     };
@@ -100,7 +100,7 @@ pub async fn rev_handler(
             Utc::now(),
             elapsed,
             &e,
-            request_id,
+            &request_id,
         )),
     }
 }

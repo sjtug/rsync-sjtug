@@ -7,7 +7,8 @@ use std::task::{Context, Poll};
 
 use futures::FutureExt;
 #[cfg(feature = "percent-encoding")]
-use percent_encoding::{AsciiSet, CONTROLS};
+use percent_encoding::AsciiSet;
+use percent_encoding::NON_ALPHANUMERIC;
 use tokio::task::JoinHandle;
 #[cfg(feature = "tests")]
 use tracing::level_filters::LevelFilter;
@@ -15,43 +16,26 @@ use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
+use url_escape::COMPONENT;
 
+// COMPONENT set without '/'
 #[cfg(feature = "percent-encoding")]
-pub const PATH_ASCII_SET: &AsciiSet = &CONTROLS
-    .add(b' ')
-    .add(b'"')
-    .add(b'#')
-    .add(b'<')
-    .add(b'>')
-    .add(b'?')
-    .add(b'`')
-    .add(b'{')
-    .add(b'}');
+pub const PATH_ASCII_SET: &AsciiSet = &COMPONENT.remove(b'/');
 
-#[cfg(feature = "percent-encoding")]
-pub const ATTR_CHAR: &AsciiSet = &CONTROLS
-    .add(b'(')
-    .add(b')')
-    .add(b'<')
-    .add(b'>')
-    .add(b'@')
-    .add(b',')
-    .add(b';')
-    .add(b':')
-    .add(b'\\')
-    .add(b'"')
-    .add(b'/')
-    .add(b'[')
-    .add(b']')
-    .add(b'?')
-    .add(b'=')
-    .add(b'{')
-    .add(b'}')
-    .add(b' ')
-    .add(b'\t')
-    .add(b'*')
-    .add(b'\'')
-    .add(b'%');
+// https://github.com/seanmonstar/reqwest/blob/61b1b2b5e6dace3733cdba291801378dd974386a/src/async_impl/multipart.rs#L438
+pub const ATTR_CHAR: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'!')
+    .remove(b'#')
+    .remove(b'$')
+    .remove(b'&')
+    .remove(b'+')
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'^')
+    .remove(b'_')
+    .remove(b'`')
+    .remove(b'|')
+    .remove(b'~');
 
 pub fn init_logger() {
     tracing_subscriber::Registry::default()

@@ -37,6 +37,7 @@ impl PgHasArrayType for FileType {
 
 /// Revision status.
 #[derive(sqlx::Type, Debug, Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "tests", derive(proptest_derive::Arbitrary))]
 #[sqlx(type_name = "revision_status", rename_all = "lowercase")]
 pub enum RevisionStatus {
     Partial,

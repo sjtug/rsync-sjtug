@@ -6,7 +6,7 @@ use std::time::Duration;
 use bigdecimal::ToPrimitive;
 use chrono::{DateTime, Utc};
 use humansize::{ISizeFormatter, SizeFormatter, BINARY};
-use sailfish::runtime::Render;
+use sailfish::runtime::{Buffer, Render};
 use sailfish::TemplateOnce;
 use sqlx::postgres::types::PgInterval;
 use sqlx::types::BigDecimal;
@@ -23,6 +23,16 @@ fn lossy_display(name: &[u8]) -> impl Display + '_ {
 
 fn href(name: &[u8]) -> impl Display + '_ {
     percent_encoding::percent_encode(name, PATH_ASCII_SET)
+}
+
+fn href_str(name: &str) -> impl Display + '_ {
+    percent_encoding::percent_encode(name.as_bytes(), PATH_ASCII_SET)
+}
+
+fn href_render(name: impl Render) -> impl Display {
+    let mut buf = Buffer::new();
+    name.render(&mut buf).unwrap();
+    percent_encoding::percent_encode(buf.as_str().as_bytes(), PATH_ASCII_SET).to_string()
 }
 
 fn datetime(dt: DateTime<Utc>) -> impl Display {

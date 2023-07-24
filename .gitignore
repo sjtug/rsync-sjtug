@@ -6,3 +6,4 @@ test.sh
 test-gc.sh
 .env
 postgres/data
+tests/vnu/vnu.jar
