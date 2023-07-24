@@ -34,15 +34,20 @@ thiserror = "1.0"
 tokio = { version = "1.25", features = ["rt"] }
 tracing = "0.1"
 tracing-actix-web = "0.7"
+uuid = "1.4"
 zstd = "0.12"
 
 [dev-dependencies]
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["arbitrary"] }
 maplit = "1.0"
+num-bigint = { version = "0.4", features = ["arbitrary"] }
+once_cell = "1.18"
 proptest = "1.2"
 proptest-arbitrary-interop = "0.1"
 proptest-derive = "0.3"
+reqwest = { version = "0.11", default-features = false, features = ["json"] }
 rstest = "0.18"
 rsync-core = { path = "../rsync-core", features = ["tests"] }
 test-strategy = "0.3"
+uuid = { version = "1.4", features = ["arbitrary"] }

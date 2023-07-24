@@ -68,12 +68,25 @@ pub struct Revision {
 
 /// Detailed information about a revision.
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct RevisionStat {
     pub revision: i64,
     pub status: RevisionStatus,
+    #[cfg_attr(
+        test,
+        proptest(strategy = "proptest_arbitrary_interop::arb::<DateTime<Utc>>()")
+    )]
     pub created_at: DateTime<Utc>,
+    #[cfg_attr(
+        test,
+        proptest(strategy = "proptest::option::of(test::arb_pg_interval())")
+    )]
     pub elapsed: Option<PgInterval>,
     pub count: Option<i64>,
+    #[cfg_attr(
+        test,
+        proptest(strategy = "proptest::option::of(test::arb_big_decimal())")
+    )]
     pub sum: Option<BigDecimal>,
 }
 
@@ -172,4 +185,29 @@ pub async fn list_directory<'a>(
         .fetch_all(&mut *db.acquire().await?)
         .await?
     })
+}
+
+#[cfg(test)]
+mod test {
+    use bigdecimal::num_bigint::BigInt;
+    use proptest::prop_compose;
+    use sqlx::postgres::types::PgInterval;
+    use sqlx::types::BigDecimal;
+
+    prop_compose! {
+        pub fn arb_pg_interval()(months: i32, days: i32, microseconds: i64) -> PgInterval {
+            PgInterval {
+                months,
+                days,
+                microseconds,
+            }
+        }
+    }
+
+    prop_compose! {
+        pub fn arb_big_decimal()(digits in proptest_arbitrary_interop::arb::<BigInt>(), scale in 0..8i64) -> BigDecimal {
+            // scale must not be too large or the test will run forever
+            BigDecimal::new(digits, scale)
+        }
+    }
 }

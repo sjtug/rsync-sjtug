@@ -8,7 +8,7 @@ edition = "2021"
 default = []
 s3 = ["opendal"]
 #s3-tests = ["s3", "tests", "aws-credential-types", "aws-sdk-s3/test-util", "s3s", "s3s-aws", "s3s-fs", "tempfile"]
-tests = []
+tests = ["proptest", "proptest-derive"]
 pg = ["sqlx", "blake2", "itertools"]
 redis = ["dep:redis", "clean-path", "scan_fmt", "bincode"]
 
@@ -22,6 +22,8 @@ futures = "0.3"
 itertools = { version = "0.11", optional = true }
 opendal = { version = "0.38", features = ["layers-tracing"], optional = true }
 percent-encoding = { version = "2.2", optional = true }
+proptest = { version = "1.2", optional = true }
+proptest-derive = { version = "0.3", optional = true }
 rand = "0.8"
 redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"], optional = true }
 scan_fmt = { version = "0.2", optional = true }
@@ -30,3 +32,4 @@ tokio = { version = "1.25", features = ["full"] }
 tracing = "0.1"
 tracing-error = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url-escape = "0.1"
