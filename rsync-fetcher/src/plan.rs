@@ -150,311 +150,314 @@ async fn copy_symlinks<'a>(
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, UNIX_EPOCH};
+    mod db_required {
+        use std::time::{Duration, UNIX_EPOCH};
 
-    use chrono::{DateTime, Utc};
-    use itertools::Itertools;
-    use sqlx::{Acquire, PgPool, Postgres};
+        use chrono::{DateTime, Utc};
+        use itertools::Itertools;
+        use sqlx::{Acquire, PgPool, Postgres};
 
-    use rsync_core::metadata::Metadata;
-    use rsync_core::pg::{
-        change_revision_status, create_revision, ensure_repository, FileType, RevisionStatus,
-    };
-    use rsync_core::tests::generate_random_namespace;
+        use rsync_core::metadata::Metadata;
+        use rsync_core::pg::{
+            change_revision_status, create_revision, ensure_repository, FileType, RevisionStatus,
+        };
+        use rsync_core::tests::generate_random_namespace;
+        use rsync_core::tests::insert_to_revision;
 
-    use crate::pg::{create_fl_table, insert_file_list_to_db};
-    use crate::plan::{diff_and_apply, TransferItem};
-    use crate::rsync::file_list::FileEntry;
-    use rsync_core::tests::insert_to_revision;
+        use crate::pg::{create_fl_table, insert_file_list_to_db};
+        use crate::plan::{diff_and_apply, TransferItem};
+        use crate::rsync::file_list::FileEntry;
 
-    async fn assert_entry_eq<'a>(
-        source_revision: i32,
-        target_revision: i32,
-        keys: &[Vec<u8>],
-        conn: impl Acquire<'a, Database = Postgres>,
-    ) {
-        let missing_or_different = sqlx::query_file!(
-            "../sqls/test_missing_or_different.sql",
-            source_revision,
-            target_revision,
-            keys
-        )
-        .fetch_all(&mut *conn.acquire().await.expect("pool"))
-        .await
-        .expect("query");
-        assert!(
-            missing_or_different.is_empty(),
-            "missing or different: {missing_or_different:?}"
-        );
-    }
-
-    struct DirLinkEntry {
-        filename: Vec<u8>,
-        modify_time: DateTime<Utc>,
-        r#type: FileType,
-        target: Option<Vec<u8>>,
-    }
-
-    async fn assert_dir_link_entries<'a>(
-        revision: i32,
-        entries: &'a [DirLinkEntry],
-        conn: impl Acquire<'a, Database = Postgres>,
-    ) {
-        let filenames: Vec<_> = entries.iter().map(|e| e.filename.clone()).collect();
-        sqlx::query_file_as!(
-            DirLinkEntry,
-            "../sqls/test_dir_link_entries.sql",
-            revision,
-            &filenames[..]
-        )
-        .fetch_all(&mut *conn.acquire().await.expect("pool"))
-        .await
-        .expect("query")
-        .into_iter()
-        .zip(entries.iter())
-        .for_each(|(row, entry)| {
-            assert_eq!(row.filename, entry.filename);
-            assert_eq!(row.modify_time, entry.modify_time);
-            assert_eq!(row.r#type, entry.r#type);
-            assert_eq!(row.target, entry.target);
-        });
-    }
-
-    async fn assert_plan(
-        remote: &[FileEntry],
-        live: &[(Vec<u8>, Metadata)],
-        partial: &[(Vec<u8>, Metadata)],
-        expect_downloads: &[TransferItem],
-        expect_copy_live: &[Vec<u8>],
-        expect_copy_partial: &[Vec<u8>],
-        db: &PgPool,
-    ) {
-        let namespace = generate_random_namespace();
-
-        create_fl_table(&namespace, db).await.expect("create table");
-        insert_file_list_to_db(&namespace, remote, db)
+        async fn assert_entry_eq<'a>(
+            source_revision: i32,
+            target_revision: i32,
+            keys: &[Vec<u8>],
+            conn: impl Acquire<'a, Database = Postgres>,
+        ) {
+            let missing_or_different = sqlx::query_file!(
+                "../sqls/test_missing_or_different.sql",
+                source_revision,
+                target_revision,
+                keys
+            )
+            .fetch_all(&mut *conn.acquire().await.expect("pool"))
             .await
-            .expect("insert file list");
+            .expect("query");
+            assert!(
+                missing_or_different.is_empty(),
+                "missing or different: {missing_or_different:?}"
+            );
+        }
 
-        ensure_repository(&namespace, db)
-            .await
-            .expect("ensure repository");
-        let live_rev = create_revision(&namespace, RevisionStatus::Partial, db)
-            .await
-            .expect("create live");
-        let partial_rev = create_revision(&namespace, RevisionStatus::Partial, db)
-            .await
-            .expect("create partial");
+        struct DirLinkEntry {
+            filename: Vec<u8>,
+            modify_time: DateTime<Utc>,
+            r#type: FileType,
+            target: Option<Vec<u8>>,
+        }
 
-        insert_to_revision(live_rev, live, db).await;
-        insert_to_revision(partial_rev, partial, db).await;
-
-        change_revision_status(
-            live_rev,
-            RevisionStatus::Live,
-            Some(DateTime::from(UNIX_EPOCH)),
-            db,
-        )
-        .await
-        .expect("change live status");
-
-        let target_rev = create_revision(&namespace, RevisionStatus::Partial, db)
+        async fn assert_dir_link_entries<'a>(
+            revision: i32,
+            entries: &'a [DirLinkEntry],
+            conn: impl Acquire<'a, Database = Postgres>,
+        ) {
+            let filenames: Vec<_> = entries.iter().map(|e| e.filename.clone()).collect();
+            sqlx::query_file_as!(
+                DirLinkEntry,
+                "../sqls/test_dir_link_entries.sql",
+                revision,
+                &filenames[..]
+            )
+            .fetch_all(&mut *conn.acquire().await.expect("pool"))
             .await
-            .expect("create target");
-        let (inserted, mut downloads) = diff_and_apply(&namespace, target_rev, db)
-            .await
-            .expect("diff and apply");
+            .expect("query")
+            .into_iter()
+            .zip(entries.iter())
+            .for_each(|(row, entry)| {
+                assert_eq!(row.filename, entry.filename);
+                assert_eq!(row.modify_time, entry.modify_time);
+                assert_eq!(row.r#type, entry.r#type);
+                assert_eq!(row.target, entry.target);
+            });
+        }
 
-        let expected_dir_link: Vec<_> = remote
-            .iter()
-            .filter_map(|e| {
-                let kind = if unix_mode::is_symlink(e.mode) {
-                    FileType::Symlink
-                } else if unix_mode::is_dir(e.mode) {
-                    FileType::Directory
-                } else {
-                    return None;
-                };
-                Some(DirLinkEntry {
-                    filename: e.name.clone(),
-                    modify_time: DateTime::from(e.modify_time),
-                    r#type: kind,
-                    target: e.link_target.clone(),
+        async fn assert_plan(
+            remote: &[FileEntry],
+            live: &[(Vec<u8>, Metadata)],
+            partial: &[(Vec<u8>, Metadata)],
+            expect_downloads: &[TransferItem],
+            expect_copy_live: &[Vec<u8>],
+            expect_copy_partial: &[Vec<u8>],
+            db: &PgPool,
+        ) {
+            let mut conn = db.acquire().await.expect("pool");
+            let namespace = generate_random_namespace();
+
+            create_fl_table(&namespace, db).await.expect("create table");
+            insert_file_list_to_db(&namespace, remote, &mut conn)
+                .await
+                .expect("insert file list");
+
+            ensure_repository(&namespace, &mut conn)
+                .await
+                .expect("ensure repository");
+            let live_rev = create_revision(&namespace, RevisionStatus::Partial, &mut conn)
+                .await
+                .expect("create live");
+            let partial_rev = create_revision(&namespace, RevisionStatus::Partial, &mut conn)
+                .await
+                .expect("create partial");
+
+            insert_to_revision(live_rev, live, &mut conn).await;
+            insert_to_revision(partial_rev, partial, &mut conn).await;
+
+            change_revision_status(
+                live_rev,
+                RevisionStatus::Live,
+                Some(DateTime::from(UNIX_EPOCH)),
+                &mut conn,
+            )
+            .await
+            .expect("change live status");
+
+            let target_rev = create_revision(&namespace, RevisionStatus::Partial, &mut conn)
+                .await
+                .expect("create target");
+            let (inserted, mut downloads) = diff_and_apply(&namespace, target_rev, db)
+                .await
+                .expect("diff and apply");
+
+            let expected_dir_link: Vec<_> = remote
+                .iter()
+                .filter_map(|e| {
+                    let kind = if unix_mode::is_symlink(e.mode) {
+                        FileType::Symlink
+                    } else if unix_mode::is_dir(e.mode) {
+                        FileType::Directory
+                    } else {
+                        return None;
+                    };
+                    Some(DirLinkEntry {
+                        filename: e.name.clone(),
+                        modify_time: DateTime::from(e.modify_time),
+                        r#type: kind,
+                        target: e.link_target.clone(),
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        let expect_inserted =
-            expect_copy_live.len() + expect_copy_partial.len() + expected_dir_link.len();
-        assert_eq!(inserted, expect_inserted as u64);
+            let expect_inserted =
+                expect_copy_live.len() + expect_copy_partial.len() + expected_dir_link.len();
+            assert_eq!(inserted, expect_inserted as u64);
 
-        downloads.sort();
-        let expect_downloads: Vec<_> = expect_downloads.iter().sorted().cloned().collect();
-        assert_eq!(downloads, expect_downloads);
-        assert_entry_eq(live_rev, target_rev, expect_copy_live, db).await;
-        assert_entry_eq(partial_rev, target_rev, expect_copy_partial, db).await;
-        assert_dir_link_entries(target_rev, &expected_dir_link, db).await;
-    }
+            downloads.sort();
+            let expect_downloads: Vec<_> = expect_downloads.iter().sorted().cloned().collect();
+            assert_eq!(downloads, expect_downloads);
+            assert_entry_eq(live_rev, target_rev, expect_copy_live, &mut conn).await;
+            assert_entry_eq(partial_rev, target_rev, expect_copy_partial, &mut conn).await;
+            assert_dir_link_entries(target_rev, &expected_dir_link, &mut conn).await;
+        }
 
-    // 1. test specific migrations
-    // 2. move one test to here from plan, and check if it works
-    // 3. implement compare copy and dir_link
-    // 4. migrate remaining tests
+        // 1. test specific migrations
+        // 2. move one test to here from plan, and check if it works
+        // 3. implement compare copy and dir_link
+        // 4. migrate remaining tests
 
-    #[sqlx::test(migrations = "../tests/migrations")]
-    async fn must_plan_no_latest(pool: PgPool) {
-        assert_plan(
-            &[
-                FileEntry::regular("a".into(), 1, UNIX_EPOCH, 0),
-                FileEntry::regular("b".into(), 1, UNIX_EPOCH, 1),
-            ],
-            &[],
-            &[],
-            &[TransferItem::new(0, None), TransferItem::new(1, None)],
-            &[],
-            &[],
-            &pool,
-        )
-        .await;
-    }
+        #[sqlx::test(migrations = "../tests/migrations")]
+        async fn must_plan_no_latest(pool: PgPool) {
+            assert_plan(
+                &[
+                    FileEntry::regular("a".into(), 1, UNIX_EPOCH, 0),
+                    FileEntry::regular("b".into(), 1, UNIX_EPOCH, 1),
+                ],
+                &[],
+                &[],
+                &[TransferItem::new(0, None), TransferItem::new(1, None)],
+                &[],
+                &[],
+                &pool,
+            )
+            .await;
+        }
 
-    #[sqlx::test(migrations = "../tests/migrations")]
-    async fn must_plan_with_latest(pool: PgPool) {
-        assert_plan(
-            &[
-                FileEntry::regular("a".into(), 2, UNIX_EPOCH, 0),
-                FileEntry::regular("b".into(), 1, UNIX_EPOCH + Duration::from_secs(1), 1),
-                FileEntry::regular("c".into(), 1, UNIX_EPOCH, 2),
-                FileEntry::regular("e".into(), 1, UNIX_EPOCH, 3),
-            ],
-            &[
-                ("a".into(), Metadata::regular(1, UNIX_EPOCH, [0; 20])),
-                ("b".into(), Metadata::regular(1, UNIX_EPOCH, [1; 20])),
-                ("c".into(), Metadata::regular(1, UNIX_EPOCH, [2; 20])),
-                ("d".into(), Metadata::regular(1, UNIX_EPOCH, [3; 20])),
-            ],
-            &[],
-            &[
-                TransferItem::new(0, Some([0; 20])), // len differs
-                TransferItem::new(1, Some([1; 20])), // time differs
-                TransferItem::new(3, None),          // new file
-            ],
-            &[
-                b"c".to_vec(), // up-to-date in latest but not exist in partial
-            ],
-            &[],
-            &pool,
-        )
-        .await;
-    }
+        #[sqlx::test(migrations = "../tests/migrations")]
+        async fn must_plan_with_latest(pool: PgPool) {
+            assert_plan(
+                &[
+                    FileEntry::regular("a".into(), 2, UNIX_EPOCH, 0),
+                    FileEntry::regular("b".into(), 1, UNIX_EPOCH + Duration::from_secs(1), 1),
+                    FileEntry::regular("c".into(), 1, UNIX_EPOCH, 2),
+                    FileEntry::regular("e".into(), 1, UNIX_EPOCH, 3),
+                ],
+                &[
+                    ("a".into(), Metadata::regular(1, UNIX_EPOCH, [0; 20])),
+                    ("b".into(), Metadata::regular(1, UNIX_EPOCH, [1; 20])),
+                    ("c".into(), Metadata::regular(1, UNIX_EPOCH, [2; 20])),
+                    ("d".into(), Metadata::regular(1, UNIX_EPOCH, [3; 20])),
+                ],
+                &[],
+                &[
+                    TransferItem::new(0, Some([0; 20])), // len differs
+                    TransferItem::new(1, Some([1; 20])), // time differs
+                    TransferItem::new(3, None),          // new file
+                ],
+                &[
+                    b"c".to_vec(), // up-to-date in latest but not exist in partial
+                ],
+                &[],
+                &pool,
+            )
+            .await;
+        }
 
-    #[sqlx::test(migrations = "../tests/migrations")]
-    async fn must_plan_with_partial(pool: PgPool) {
-        assert_plan(
-            &[
-                FileEntry::regular("a".into(), 2, UNIX_EPOCH, 0),
-                FileEntry::regular("b".into(), 1, UNIX_EPOCH + Duration::from_secs(1), 1),
-                FileEntry::regular("c".into(), 1, UNIX_EPOCH, 2),
-                FileEntry::regular("e".into(), 1, UNIX_EPOCH, 3),
-            ],
-            &[],
-            &[
-                ("a".into(), Metadata::regular(1, UNIX_EPOCH, [0; 20])),
-                ("b".into(), Metadata::regular(1, UNIX_EPOCH, [1; 20])),
-                ("c".into(), Metadata::regular(1, UNIX_EPOCH, [2; 20])),
-                ("d".into(), Metadata::regular(1, UNIX_EPOCH, [3; 20])),
-            ],
-            &[
-                TransferItem::new(0, Some([0; 20])), // len differs
-                TransferItem::new(1, Some([1; 20])), // time differs
-                TransferItem::new(3, None),          // new file
-            ],
-            &[], // in our test harness, partial revision is higher than latest
-            &[
-                b"c".to_vec(), // same as partial
-                               // no 'd' because not in remote
-            ],
-            &pool,
-        )
-        .await;
-    }
+        #[sqlx::test(migrations = "../tests/migrations")]
+        async fn must_plan_with_partial(pool: PgPool) {
+            assert_plan(
+                &[
+                    FileEntry::regular("a".into(), 2, UNIX_EPOCH, 0),
+                    FileEntry::regular("b".into(), 1, UNIX_EPOCH + Duration::from_secs(1), 1),
+                    FileEntry::regular("c".into(), 1, UNIX_EPOCH, 2),
+                    FileEntry::regular("e".into(), 1, UNIX_EPOCH, 3),
+                ],
+                &[],
+                &[
+                    ("a".into(), Metadata::regular(1, UNIX_EPOCH, [0; 20])),
+                    ("b".into(), Metadata::regular(1, UNIX_EPOCH, [1; 20])),
+                    ("c".into(), Metadata::regular(1, UNIX_EPOCH, [2; 20])),
+                    ("d".into(), Metadata::regular(1, UNIX_EPOCH, [3; 20])),
+                ],
+                &[
+                    TransferItem::new(0, Some([0; 20])), // len differs
+                    TransferItem::new(1, Some([1; 20])), // time differs
+                    TransferItem::new(3, None),          // new file
+                ],
+                &[], // in our test harness, partial revision is higher than latest
+                &[
+                    b"c".to_vec(), // same as partial
+                                   // no 'd' because not in remote
+                ],
+                &pool,
+            )
+            .await;
+        }
 
-    #[sqlx::test(migrations = "../tests/migrations")]
-    async fn must_plan_with_partial_latest(pool: PgPool) {
-        assert_plan(
-            &[
-                FileEntry::regular("a".into(), 2, UNIX_EPOCH, 0),
-                FileEntry::regular("b".into(), 1, UNIX_EPOCH + Duration::from_secs(1), 1),
-                FileEntry::regular("c".into(), 1, UNIX_EPOCH, 2),
-                FileEntry::regular("e".into(), 1, UNIX_EPOCH, 3),
-                FileEntry::regular("f".into(), 1, UNIX_EPOCH, 4),
-                FileEntry::regular("g".into(), 1, UNIX_EPOCH, 5),
-                FileEntry::regular("h".into(), 1, UNIX_EPOCH, 6),
-            ],
-            &[
-                ("a".into(), Metadata::regular(2, UNIX_EPOCH, [0; 20])),
-                ("b".into(), Metadata::regular(1, UNIX_EPOCH, [1; 20])),
-                ("d".into(), Metadata::regular(1, UNIX_EPOCH, [3; 20])),
-                ("f".into(), Metadata::regular(2, UNIX_EPOCH, [4; 20])),
-                ("g".into(), Metadata::regular(1, UNIX_EPOCH, [6; 20])),
-                ("h".into(), Metadata::regular(1, UNIX_EPOCH, [0; 20])),
-            ],
-            &[
-                ("a".into(), Metadata::regular(1, UNIX_EPOCH, [0; 20])),
-                (
-                    "b".into(),
-                    Metadata::regular(1, UNIX_EPOCH + Duration::from_secs(1), [1; 20]),
-                ),
-                ("c".into(), Metadata::regular(1, UNIX_EPOCH, [2; 20])),
-                ("d".into(), Metadata::regular(1, UNIX_EPOCH, [3; 20])),
-                ("f".into(), Metadata::regular(2, UNIX_EPOCH, [5; 20])),
-                ("g".into(), Metadata::regular(2, UNIX_EPOCH, [6; 20])),
-            ],
-            &[
-                // 0 is present in live
-                // 1 is present in partial
-                // 2 is present in partial
-                TransferItem::new(3, None), // new file
-                TransferItem::new(4, Some([5; 20])), // len differs, take partial as basis
-                                            // 5 is present in live
-                                            // 6 is present in live
-            ],
-            &[
-                b"a".to_vec(), // 0
-                b"g".to_vec(), // 5
-                b"h".to_vec(), // 6
-            ],
-            &[
-                b"b".to_vec(), // 1
-                b"c".to_vec(), // 2
-            ],
-            &pool,
-        )
-        .await;
-    }
+        #[sqlx::test(migrations = "../tests/migrations")]
+        async fn must_plan_with_partial_latest(pool: PgPool) {
+            assert_plan(
+                &[
+                    FileEntry::regular("a".into(), 2, UNIX_EPOCH, 0),
+                    FileEntry::regular("b".into(), 1, UNIX_EPOCH + Duration::from_secs(1), 1),
+                    FileEntry::regular("c".into(), 1, UNIX_EPOCH, 2),
+                    FileEntry::regular("e".into(), 1, UNIX_EPOCH, 3),
+                    FileEntry::regular("f".into(), 1, UNIX_EPOCH, 4),
+                    FileEntry::regular("g".into(), 1, UNIX_EPOCH, 5),
+                    FileEntry::regular("h".into(), 1, UNIX_EPOCH, 6),
+                ],
+                &[
+                    ("a".into(), Metadata::regular(2, UNIX_EPOCH, [0; 20])),
+                    ("b".into(), Metadata::regular(1, UNIX_EPOCH, [1; 20])),
+                    ("d".into(), Metadata::regular(1, UNIX_EPOCH, [3; 20])),
+                    ("f".into(), Metadata::regular(2, UNIX_EPOCH, [4; 20])),
+                    ("g".into(), Metadata::regular(1, UNIX_EPOCH, [6; 20])),
+                    ("h".into(), Metadata::regular(1, UNIX_EPOCH, [0; 20])),
+                ],
+                &[
+                    ("a".into(), Metadata::regular(1, UNIX_EPOCH, [0; 20])),
+                    (
+                        "b".into(),
+                        Metadata::regular(1, UNIX_EPOCH + Duration::from_secs(1), [1; 20]),
+                    ),
+                    ("c".into(), Metadata::regular(1, UNIX_EPOCH, [2; 20])),
+                    ("d".into(), Metadata::regular(1, UNIX_EPOCH, [3; 20])),
+                    ("f".into(), Metadata::regular(2, UNIX_EPOCH, [5; 20])),
+                    ("g".into(), Metadata::regular(2, UNIX_EPOCH, [6; 20])),
+                ],
+                &[
+                    // 0 is present in live
+                    // 1 is present in partial
+                    // 2 is present in partial
+                    TransferItem::new(3, None), // new file
+                    TransferItem::new(4, Some([5; 20])), // len differs, take partial as basis
+                                                // 5 is present in live
+                                                // 6 is present in live
+                ],
+                &[
+                    b"a".to_vec(), // 0
+                    b"g".to_vec(), // 5
+                    b"h".to_vec(), // 6
+                ],
+                &[
+                    b"b".to_vec(), // 1
+                    b"c".to_vec(), // 2
+                ],
+                &pool,
+            )
+            .await;
+        }
 
-    #[sqlx::test(migrations = "../tests/migrations")]
-    async fn must_plan_copy_dir_link(pool: PgPool) {
-        assert_plan(
-            &[
-                FileEntry::regular("a".into(), 1, UNIX_EPOCH, 0),
-                FileEntry::directory("b".into(), 1, UNIX_EPOCH, 1),
-                FileEntry::symlink("c".into(), 1, "a".to_string(), UNIX_EPOCH, 2),
-                FileEntry::directory("d".into(), 1, UNIX_EPOCH, 3),
-                FileEntry::symlink("e".into(), 1, "d".to_string(), UNIX_EPOCH, 4),
-            ],
-            &[
-                ("a".into(), Metadata::directory(1, UNIX_EPOCH)),
-                ("b".into(), Metadata::regular(1, UNIX_EPOCH, [0; 20])),
-                ("c".into(), Metadata::symlink(1, UNIX_EPOCH, "a")),
-                ("d".into(), Metadata::directory(2, UNIX_EPOCH)),
-            ],
-            &[("d".into(), Metadata::directory(1, UNIX_EPOCH))],
-            &[TransferItem::new(0, None)],
-            &[],
-            &[],
-            &pool,
-        )
-        .await;
+        #[sqlx::test(migrations = "../tests/migrations")]
+        async fn must_plan_copy_dir_link(pool: PgPool) {
+            assert_plan(
+                &[
+                    FileEntry::regular("a".into(), 1, UNIX_EPOCH, 0),
+                    FileEntry::directory("b".into(), 1, UNIX_EPOCH, 1),
+                    FileEntry::symlink("c".into(), 1, "a".to_string(), UNIX_EPOCH, 2),
+                    FileEntry::directory("d".into(), 1, UNIX_EPOCH, 3),
+                    FileEntry::symlink("e".into(), 1, "d".to_string(), UNIX_EPOCH, 4),
+                ],
+                &[
+                    ("a".into(), Metadata::directory(1, UNIX_EPOCH)),
+                    ("b".into(), Metadata::regular(1, UNIX_EPOCH, [0; 20])),
+                    ("c".into(), Metadata::symlink(1, UNIX_EPOCH, "a")),
+                    ("d".into(), Metadata::directory(2, UNIX_EPOCH)),
+                ],
+                &[("d".into(), Metadata::directory(1, UNIX_EPOCH))],
+                &[TransferItem::new(0, None)],
+                &[],
+                &[],
+                &pool,
+            )
+            .await;
+        }
     }
 }
