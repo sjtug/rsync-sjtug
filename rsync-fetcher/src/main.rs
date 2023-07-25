@@ -53,6 +53,7 @@ async fn main() -> Result<()> {
     let namespace = &opts.namespace;
 
     let pool = Arc::new(PgPool::connect(&opts.pg_url).await?);
+    let mut db_conn = pool.acquire().await?;
     // Shared lock table structure to prevent schema changes.
     let system_lock = PgLock::new_shared("_system");
     let system_guard = system_lock.lock(pool.acquire().await?).await?;
@@ -68,12 +69,12 @@ async fn main() -> Result<()> {
 
     info!("fetching file list from rsync server.");
     let file_list = Arc::new(conn.recv_file_list().await?);
-    create_fl_table(namespace, &*pool).await?;
-    insert_file_list_to_db(namespace, &file_list, &*pool).await?;
+    create_fl_table(namespace, &mut db_conn).await?;
+    insert_file_list_to_db(namespace, &file_list, &mut db_conn).await?;
 
     info!("generating transfer plan.");
-    ensure_repository(namespace, &*pool).await?;
-    let revision = create_revision(namespace, RevisionStatus::Partial, &*pool).await?;
+    ensure_repository(namespace, &mut db_conn).await?;
+    let revision = create_revision(namespace, RevisionStatus::Partial, &mut db_conn).await?;
     // Run queries to
     // 1. diff files to be transferred
     // 2. copy unchanged entries from live indices to partial index
@@ -129,18 +130,24 @@ async fn main() -> Result<()> {
     insert_handle.await??;
 
     info!("generating index for directory listing.");
-    analyse_objects(&*pool).await?;
-    update_parent_ids(revision, &*pool).await?;
+    analyse_objects(&mut db_conn).await?;
+    update_parent_ids(revision, &mut db_conn).await?;
 
     info!("committing transfer.");
-    change_revision_status(revision, RevisionStatus::Live, Some(Utc::now()), &*pool).await?;
+    change_revision_status(
+        revision,
+        RevisionStatus::Live,
+        Some(Utc::now()),
+        &mut db_conn,
+    )
+    .await?;
 
     // Finalize rsync connection.
     let stats = finalize(&mut *generator, &mut *receiver).await?;
     info!(?stats, "transfer stats");
 
     // Finalize db.
-    drop_fl_table(namespace, &*pool).await?;
+    drop_fl_table(namespace, &mut db_conn).await?;
     system_guard.unlock().await?;
     ns_guard.unlock().await?;
 

@@ -139,90 +139,94 @@ pub async fn update_parent_ids<'a>(
 mod tests {
     #![allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
 
-    use sqlx::PgPool;
+    mod db_required {
+        use sqlx::PgPool;
 
-    use rsync_core::pg::{create_revision, ensure_repository, FileType, RevisionStatus};
-    use rsync_core::tests::generate_random_namespace;
+        use rsync_core::pg::{create_revision, ensure_repository, FileType, RevisionStatus};
+        use rsync_core::tests::generate_random_namespace;
 
-    use crate::pg::update_parent_ids;
+        use crate::pg::update_parent_ids;
 
-    #[sqlx::test(migrations = "../tests/migrations")]
-    async fn must_update_parent_ids(pool: PgPool) {
-        let namespace = generate_random_namespace();
-        ensure_repository(&namespace, &pool)
-            .await
-            .expect("create repo");
-        let rev = create_revision(&namespace, RevisionStatus::Partial, &pool)
-            .await
-            .expect("create rev");
+        #[sqlx::test(migrations = "../tests/migrations")]
+        async fn must_update_parent_ids(pool: PgPool) {
+            let mut conn = pool.acquire().await.expect("acquire");
 
-        let entries: &[(&[u8], _)] = &[
-            (b"a/d", FileType::Directory), // file inserted before directory is allowed
-            (b"a/d/e", FileType::Regular),
-            (b"a", FileType::Directory),
-            (b"a/b", FileType::Regular),
-            (b"a/c", FileType::Regular),
-            (b"b", FileType::Regular),
-            (b"d", FileType::Directory),
-            (b"d/f", FileType::Directory),
-            (b"d/f/g", FileType::Directory),
-        ];
-        for (idx, (filename, kind)) in entries.iter().enumerate() {
-            let blake2b = if *kind == FileType::Regular {
-                Some(&[0u8; 20][..])
-            } else {
-                None
-            };
-            sqlx::query!(
-                r#"
+            let namespace = generate_random_namespace();
+            ensure_repository(&namespace, &mut conn)
+                .await
+                .expect("create repo");
+            let rev = create_revision(&namespace, RevisionStatus::Partial, &mut conn)
+                .await
+                .expect("create rev");
+
+            let entries: &[(&[u8], _)] = &[
+                (b"a/d", FileType::Directory), // file inserted before directory is allowed
+                (b"a/d/e", FileType::Regular),
+                (b"a", FileType::Directory),
+                (b"a/b", FileType::Regular),
+                (b"a/c", FileType::Regular),
+                (b"b", FileType::Regular),
+                (b"d", FileType::Directory),
+                (b"d/f", FileType::Directory),
+                (b"d/f/g", FileType::Directory),
+            ];
+            for (idx, (filename, kind)) in entries.iter().enumerate() {
+                let blake2b = if *kind == FileType::Regular {
+                    Some(&[0u8; 20][..])
+                } else {
+                    None
+                };
+                sqlx::query!(
+                    r#"
             INSERT INTO objects (id, revision, filename, len, modify_time, type, blake2b)
             OVERRIDING SYSTEM VALUE
             VALUES ($1, $2, $3, 0, now(), $4, $5)
             "#,
-                idx as i32,
-                rev,
-                *filename,
-                *kind as _,
-                blake2b
-            )
-            .execute(&pool)
-            .await
-            .expect("insert");
-        }
+                    idx as i32,
+                    rev,
+                    *filename,
+                    *kind as _,
+                    blake2b
+                )
+                .execute(&mut *conn)
+                .await
+                .expect("insert");
+            }
 
-        update_parent_ids(rev, &pool)
-            .await
-            .expect("update_parent_ids");
+            update_parent_ids(rev, &mut conn)
+                .await
+                .expect("update_parent_ids");
 
-        let expect_entries: &[(&[u8], _)] = &[
-            (b"a", None),
-            (b"a/b", Some(2i64)),
-            (b"a/c", Some(2)),
-            (b"a/d", Some(2)),
-            (b"a/d/e", Some(0)),
-            (b"b", None),
-            (b"d", None),
-            (b"d/f", Some(6)),
-            (b"d/f/g", Some(7)),
-        ];
-        for (filename, expected_parent) in expect_entries.iter() {
-            let actual = sqlx::query!(
-                r#"
+            let expect_entries: &[(&[u8], _)] = &[
+                (b"a", None),
+                (b"a/b", Some(2i64)),
+                (b"a/c", Some(2)),
+                (b"a/d", Some(2)),
+                (b"a/d/e", Some(0)),
+                (b"b", None),
+                (b"d", None),
+                (b"d/f", Some(6)),
+                (b"d/f/g", Some(7)),
+            ];
+            for (filename, expected_parent) in expect_entries.iter() {
+                let actual = sqlx::query!(
+                    r#"
             SELECT parent FROM objects WHERE revision = $1 AND filename = $2
             "#,
-                rev,
-                *filename
-            )
-            .fetch_one(&pool)
-            .await
-            .expect("select")
-            .parent;
-            assert_eq!(
-                actual,
-                *expected_parent,
-                "parent of {:?} is wrong",
-                String::from_utf8_lossy(filename)
-            );
+                    rev,
+                    *filename
+                )
+                .fetch_one(&mut *conn)
+                .await
+                .expect("select")
+                .parent;
+                assert_eq!(
+                    actual,
+                    *expected_parent,
+                    "parent of {:?} is wrong",
+                    String::from_utf8_lossy(filename)
+                );
+            }
         }
     }
 }
