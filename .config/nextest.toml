@@ -4,3 +4,4 @@ db-required = { max-threads = 2 }
 [[profile.default.overrides]]
 filter = 'test(db_required::)'
 test-group = 'db-required'
+retries = 2
