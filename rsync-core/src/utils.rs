@@ -8,6 +8,7 @@ use std::task::{Context, Poll};
 use futures::FutureExt;
 #[cfg(feature = "percent-encoding")]
 use percent_encoding::AsciiSet;
+#[cfg(feature = "percent-encoding")]
 use percent_encoding::NON_ALPHANUMERIC;
 use tokio::task::JoinHandle;
 #[cfg(feature = "tests")]
@@ -16,6 +17,7 @@ use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
+#[cfg(feature = "percent-encoding")]
 use url_escape::COMPONENT;
 
 // COMPONENT set without '/'
@@ -23,6 +25,7 @@ use url_escape::COMPONENT;
 pub const PATH_ASCII_SET: &AsciiSet = &COMPONENT.remove(b'/');
 
 // https://github.com/seanmonstar/reqwest/blob/61b1b2b5e6dace3733cdba291801378dd974386a/src/async_impl/multipart.rs#L438
+#[cfg(feature = "percent-encoding")]
 pub const ATTR_CHAR: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'!')
     .remove(b'#')

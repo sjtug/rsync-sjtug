@@ -11,6 +11,7 @@ s3 = ["opendal"]
 tests = ["proptest", "proptest-derive"]
 pg = ["sqlx", "blake2", "itertools"]
 redis = ["dep:redis", "clean-path", "scan_fmt", "bincode"]
+percent-encoding = ["dep:percent-encoding", "url-escape"]
 
 [dependencies]
 bincode = { version = "=2.0.0-rc.3", optional = true }
@@ -32,4 +33,4 @@ tokio = { version = "1.25", features = ["full"] }
 tracing = "0.1"
 tracing-error = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-url-escape = "0.1"
+url-escape = { version = "0.1", optional = true }
