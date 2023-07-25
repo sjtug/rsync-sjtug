@@ -12,7 +12,7 @@ CREATE TABLE revisions
     created_at   timestamptz(0)  NOT NULL,
     completed_at timestamptz(0),
     status       revision_status NOT NULL,
-    CONSTRAINT completed_unless_partial CHECK (status = 'partial' OR completed_at IS NOT NULL)
+    CONSTRAINT completed_if_live CHECK (completed_at IS NOT NULL OR status <> 'live')
 );
 CREATE INDEX revisions_repository_idx ON revisions (repository);
 CREATE TABLE objects
