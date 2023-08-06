@@ -6,11 +6,16 @@ use arc_swap::ArcSwap;
 use eyre::{eyre, Report, Result};
 use futures::{FutureExt, TryFutureExt};
 use get_size::GetSize;
+use metrics::{histogram, increment_counter};
 use moka::future::Cache;
 use moka::Expiry;
 use rkyv::{Deserialize, Infallible};
 use tracing::{debug, instrument, warn};
 
+use crate::metrics::{
+    COUNTER_L1_HIT, COUNTER_L2_HIT, COUNTER_MISS, COUNTER_POOR, COUNTER_SMALL,
+    HISTOGRAM_COMPRESSION_RATIO, HISTOGRAM_RESOLVED_SIZE,
+};
 use crate::path_resolve::{ArchivedResolved, Resolved};
 
 /// L1 cache size is 32MB.
@@ -115,8 +120,7 @@ impl NSCacheInner {
 
         // Fast path: already exists in L1 cache
         if let Some(resolved) = self.l1.get(key) {
-            // TODO debug code, maybe add a metrics here
-            debug!("L1 cache hit");
+            increment_counter!(COUNTER_L1_HIT);
             return Ok(resolved);
         }
 
@@ -124,15 +128,21 @@ impl NSCacheInner {
         // We'll deal with this later. No calculation done yet.
         let init = self.l2.get(key).map_or_else(
             || {
-                // TODO debug code, maybe add a metrics here
-                debug!("all cache miss");
-                init.map_ok(Arc::new).right_future()
+                increment_counter!(COUNTER_MISS);
+                init.map_ok(|resolved| {
+                    let resolved_size = resolved.get_heap_size();
+                    #[allow(clippy::cast_precision_loss)]
+                    {
+                        histogram!(HISTOGRAM_RESOLVED_SIZE, resolved_size as f64);
+                    }
+                    Arc::new(resolved)
+                })
+                .right_future()
             },
             |maybe_compressed| {
                 // Data still in L2 cache, but not in L1 cache.
                 // Then we need to decompress it to L1 cache.
-                // TODO debug code, maybe add a metrics here
-                debug!("L2 cache hit");
+                increment_counter!(COUNTER_L2_HIT);
                 let current_span = tracing::Span::current();
                 async move {
                     tokio::task::spawn_blocking(move || {
@@ -202,7 +212,7 @@ impl MaybeCompressed {
     pub fn compress_from(resolved: Arc<Resolved>) -> Self {
         if matches!(&*resolved, Resolved::Regular { .. }) || resolved.get_heap_size() < 2048 {
             // Too small, not worth compressing.
-            // TODO debug code, metrics?
+            increment_counter!(COUNTER_SMALL);
             debug!(
                 size = resolved.get_heap_size(),
                 "too small, not worth compressing"
@@ -214,14 +224,18 @@ impl MaybeCompressed {
         let bytes = rkyv::to_bytes::<_, 8192>(&*resolved).expect("can't be serialized");
         let mut compressed = zstd::bulk::compress(&bytes, 0).expect("can't be compressed");
         compressed.shrink_to_fit();
-        // TODO metrics ratio histogram
         if compressed.len() > bytes.len() * 3 / 4 {
             // Not responding well to compression.
-            // TODO debug code, metrics?
+            increment_counter!(COUNTER_POOR);
             debug!("not responding well to compression, give up");
             return Self::Uncompressed(resolved);
         }
 
+        let ratio = 100 - compressed.len() * 100 / bytes.len();
+        #[allow(clippy::cast_precision_loss)]
+        {
+            histogram!(HISTOGRAM_COMPRESSION_RATIO, ratio as f64);
+        }
         Self::Compressed {
             data: compressed,
             len: bytes.len(),

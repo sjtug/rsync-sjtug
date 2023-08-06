@@ -41,11 +41,20 @@ pub const ATTR_CHAR: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'~');
 
 pub fn init_logger() {
-    tracing_subscriber::Registry::default()
+    let builder = tracing_subscriber::Registry::default()
         .with(EnvFilter::from_default_env())
         .with(ErrorLayer::default())
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
-        .init();
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr));
+    #[cfg(feature = "metrics-tracing-context")]
+    {
+        builder
+            .with(metrics_tracing_context::MetricsLayer::new())
+            .init();
+    }
+    #[cfg(not(feature = "metrics-tracing-context"))]
+    {
+        builder.init();
+    }
 }
 
 #[cfg(feature = "tests")]

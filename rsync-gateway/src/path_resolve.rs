@@ -4,6 +4,7 @@ use bstr::ByteSlice;
 use chrono::{DateTime, Utc};
 use eyre::{bail, Result};
 use get_size::GetSize;
+use metrics::increment_counter;
 use opendal::Operator;
 use rkyv::{Archive, Deserialize, Serialize};
 use sqlx::{Acquire, Postgres};
@@ -12,6 +13,10 @@ use tracing::{error, instrument};
 use rsync_core::utils::{ToHex, ATTR_CHAR};
 
 use crate::cache::PRESIGN_TIMEOUT;
+use crate::metrics::{
+    COUNTER_RESOLVED_ERROR, COUNTER_RESOLVED_LISTING, COUNTER_RESOLVED_MISSING,
+    COUNTER_RESOLVED_REGULAR,
+};
 use crate::pg::list_directory;
 use crate::realpath::{realpath, RealpathError, ResolveError, Target};
 use crate::utils::SkipRkyv;
@@ -45,7 +50,11 @@ pub async fn resolve<'a>(
     op: &Operator,
 ) -> Result<Resolved> {
     Ok(match realpath(path, revision, db.clone()).await {
-        Ok(Target::Directory(path)) => resolve_listing(&path, revision, db).await?,
+        Ok(Target::Directory(path)) => {
+            let resolved = resolve_listing(&path, revision, db).await?;
+            increment_counter!(COUNTER_RESOLVED_LISTING);
+            resolved
+        }
         Ok(Target::Regular(blake2b)) => {
             let filename = path.rsplit_once_str(b"/").map_or(path, |(_, s)| s);
             let encoded_name = percent_encoding::percent_encode(filename, ATTR_CHAR);
@@ -62,13 +71,18 @@ pub async fn resolve<'a>(
                 .presign_read_with(&s3_path, PRESIGN_TIMEOUT)
                 .override_content_disposition(&content_disposition)
                 .await?;
+            increment_counter!(COUNTER_RESOLVED_REGULAR);
             Resolved::Regular {
                 url: presigned.uri().to_string(),
                 expired_at,
             }
         }
-        Err(RealpathError::Resolve(e)) => Resolved::NotFound { reason: e },
+        Err(RealpathError::Resolve(e)) => {
+            increment_counter!(COUNTER_RESOLVED_MISSING);
+            Resolved::NotFound { reason: e }
+        }
         Err(e) => {
+            increment_counter!(COUNTER_RESOLVED_ERROR);
             error!(%e, "realpath error");
             bail!(e);
         }
