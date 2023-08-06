@@ -24,6 +24,8 @@ use crate::s3::bulk_delete_objs;
 mod opts;
 mod pg;
 mod s3;
+#[cfg(test)]
+mod tests;
 
 #[tokio::main]
 async fn main() -> Result<()> {
