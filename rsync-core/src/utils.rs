@@ -126,7 +126,7 @@ impl<T> Future for AbortJoinHandle<T> {
     type Output = <JoinHandle<T> as Future>::Output;
 
     fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.poll_unpin(cx)
+        self.0.poll_unpin(cx)
     }
 }
 
