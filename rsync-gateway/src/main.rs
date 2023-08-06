@@ -7,9 +7,11 @@
 )]
 
 use actix_web::middleware::TrailingSlash;
-use actix_web::{App, HttpServer};
+use actix_web::web::Data;
+use actix_web::{web, App, HttpServer};
 use actix_web_lab::middleware::NormalizePath;
 use eyre::Result;
+use metrics_exporter_prometheus::PrometheusBuilder;
 use sqlx::PgPool;
 use tracing::{error, warn};
 use tracing_actix_web::TracingLogger;
@@ -18,12 +20,14 @@ use rsync_core::pg_lock::PgLock;
 use rsync_core::utils::{init_color_eyre, init_logger};
 
 use crate::app::{configure, default_op_builder};
+use crate::metrics::init_metrics;
 use crate::opts::{load_config, validate_config};
 
 mod app;
 mod cache;
 mod handler;
 mod listener;
+mod metrics;
 mod opts;
 mod path_resolve;
 mod pg;
@@ -39,6 +43,8 @@ mod utils;
 pub async fn main() -> Result<()> {
     init_logger();
     init_color_eyre()?;
+
+    let metrics_handle = init_metrics()?;
 
     dotenvy::dotenv()?;
     let opts = load_config()?;
@@ -58,6 +64,8 @@ pub async fn main() -> Result<()> {
                 .wrap(NormalizePath::new(TrailingSlash::Trim).use_redirects())
                 .wrap(TracingLogger::default())
                 .configure(cfg.clone())
+                .route("/_metrics", web::get().to(metrics::metrics_handler))
+                .app_data(Data::new(metrics_handle.clone()))
         }
     });
 
