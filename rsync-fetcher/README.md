@@ -1,7 +1,7 @@
 # rsync-fetcher
 
 This is a rsync receiver implementation. Simply put, it's much like rsync, but saves the files to s3 and metadata to
-redis instead of to a filesystem.
+the database instead of to a filesystem.
 
 ## Features
 
@@ -17,19 +17,20 @@ redis instead of to a filesystem.
 
 ## Implementation Details
 
-1. Connect to Redis and S3, check if there's already another instance (fetcher, gc) running.
+1. Connect to Postgres and S3, check if there's already another instance (fetcher, gc) running.
 2. Fetch file list from rsync server.
-3. Calculate the delta between the remote file list and the local index, which is
-   the union of current production index and last partial index (if any).
-4. Start generator and receiver task.
-5. After both tasks completed, generate file listing and upload to S3.
-6. Commit the partial index to production.
+3. Calculate the delta between the remote file list and local files, which is the union of files in all live and partial
+revisions.
+4. Create a new partial revision.
+5. Start generator and receiver task.
+6. After both tasks completed, update some metadata (parents link) to speedup directory listing.
+7. Commit the partial revision to production.
 
 Generator task:
 
 1. Generates a list of files to be fetched, and sends them to the rsync server.
-2. If any file exists in the local index, it downloads the file, calculate the rolling checksum, and additionally sends
-   the checksum to rsync server.
+2. If any file exists in an existing live or partial revision, it downloads the file, calculate the rolling checksum,
+and additionally sends the checksum to rsync server.
 
 Receiver task:
 
@@ -40,6 +41,4 @@ Receiver task:
 Uploader task:
 
 1. Take files downloaded by receiver task, and upload them to S3.
-2. After uploading a file, updates the partial index. If the file already exists in the partial index, check if the
-   checksum matches. If not, put the old metadata into the partial-stale index, and update the partial index with the
-   new metadata.
+2. After uploading a file, updates the partial revision.
