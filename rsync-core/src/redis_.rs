@@ -212,7 +212,7 @@ pub async fn commit_transfer(
     Ok(())
 }
 
-pub fn async_iter_to_stream<T: FromRedisValue + Unpin>(
+pub fn async_iter_to_stream<T: FromRedisValue + Send + Unpin>(
     it: AsyncIter<T>,
 ) -> impl Stream<Item = Result<T>> + '_ {
     stream::unfold(it, |mut it| async move {
