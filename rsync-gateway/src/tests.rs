@@ -211,7 +211,7 @@ mod db_required {
                 String::from("test") =>
                 Endpoint {
                     s3_bucket: String::new(),
-                    s3_prefix: String::new(),
+                    s3_prefix: namespace.clone(),
                     namespace: namespace.clone(),
                 },
             },

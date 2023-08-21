@@ -61,9 +61,9 @@ pub async fn resolve<'a>(
             let content_disposition =
                 format!("attachment; filename=\"{encoded_name}\"; filename*=UTF-8''{encoded_name}");
             let s3_path = if s3_prefix.is_empty() {
-                format!("{namespace}/{:x}", blake2b.as_hex())
+                format!("{:x}", blake2b.as_hex())
             } else {
-                format!("{s3_prefix}/{namespace}/{:x}", blake2b.as_hex())
+                format!("{s3_prefix}/{:x}", blake2b.as_hex())
             };
             // Expire the pre-signed URL halfway through its lifetime.
             let expired_at = Instant::now() + PRESIGN_TIMEOUT / 2;
