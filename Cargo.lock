@@ -2917,8 +2917,8 @@ dependencies = [
 
 [[package]]
 name = "redis"
-version = "0.22.3"
-source = "git+https://github.com/PhotonQuantum/redis-rs#a50039a247a0fc3ffb6051e8ab6870c894777374"
+version = "0.23.2"
+source = "git+https://github.com/PhotonQuantum/redis-rs#9ca4f2aeaf9bc701893367a44bd1936dedda9f0c"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2929,6 +2929,7 @@ dependencies = [
  "pin-project-lite",
  "ryu",
  "sha1_smol",
+ "socket2 0.4.9",
  "tokio",
  "tokio-util",
  "url",

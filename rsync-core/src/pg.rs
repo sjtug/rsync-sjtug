@@ -11,7 +11,7 @@ use sqlx::types::chrono::{DateTime, Utc};
 use sqlx::{Acquire, Postgres};
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
-use tracing::{info, instrument};
+use tracing::{debug, info, instrument};
 
 use crate::metadata::{MetaExtra, Metadata};
 
@@ -85,13 +85,13 @@ pub async fn insert_task<'a>(
 
                     (false, false)
                 } else {
-                    info!("pg_tx closed, breaking");
+                    debug!("pg_tx closed, breaking");
                     (true, true)
                 }
             }
         };
         if (force || keys.len() >= MAX_INSERT_PER_BATCH) && !keys.is_empty() {
-            info!(count = keys.len(), "inserting objects");
+            debug!(count = keys.len(), "inserting objects");
 
             let mut txn = conn.begin().await?;
 
@@ -125,7 +125,7 @@ pub async fn insert_task<'a>(
                 .await?;
                 affected += result.rows_affected();
             }
-            info!(rev, affected, "rows affected");
+            debug!(rev, affected, "rows affected");
             txn.commit().await?;
 
             keys.clear();
