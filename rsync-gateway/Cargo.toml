@@ -8,7 +8,7 @@ edition = "2021"
 actix-web = "4.3"
 actix-web-lab = "0.19"
 arc-swap = "1.6"
-atomic = "0.5"
+atomic = "0.6"
 bigdecimal = "0.4"
 bstr = "1.2"
 chrono = { version = "0.4", features = ["rkyv"] }
