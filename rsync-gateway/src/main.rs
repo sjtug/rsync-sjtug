@@ -11,7 +11,6 @@ use actix_web::web::Data;
 use actix_web::{web, App, HttpServer};
 use actix_web_lab::middleware::NormalizePath;
 use eyre::Result;
-use metrics_exporter_prometheus::PrometheusBuilder;
 use sqlx::PgPool;
 use tracing::{error, warn};
 use tracing_actix_web::TracingLogger;

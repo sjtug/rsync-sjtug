@@ -49,6 +49,7 @@ pub fn init_metrics() -> Result<PrometheusHandle> {
     Ok(handle)
 }
 
+#[allow(clippy::unused_async)]
 pub async fn metrics_handler(recorder: Data<PrometheusHandle>) -> impl Responder {
     recorder.render()
 }
