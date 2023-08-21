@@ -45,7 +45,7 @@ pub async fn main() -> Result<()> {
 
     let metrics_handle = init_metrics()?;
 
-    dotenvy::dotenv()?;
+    drop(dotenvy::dotenv());
     let opts = load_config()?;
     validate_config(&opts)?;
 

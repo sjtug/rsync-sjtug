@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
     init_logger();
     init_color_eyre()?;
 
-    dotenvy::dotenv()?;
+    drop(dotenvy::dotenv());
     let opts = Opts::parse();
     let namespace = &opts.namespace;
 

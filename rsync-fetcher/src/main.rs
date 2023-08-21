@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
     init_logger();
     init_color_eyre()?;
 
-    dotenvy::dotenv()?;
+    drop(dotenvy::dotenv());
     let opts = Opts::parse();
     let rsync_opts = RsyncOpts::from(&opts);
     let s3_opts = S3Opts::from(&opts);

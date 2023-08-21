@@ -32,7 +32,7 @@ pub enum Command {
 async fn main() -> eyre::Result<()> {
     init_color_eyre()?;
     init_logger();
-    dotenvy::dotenv()?;
+    drop(dotenvy::dotenv());
 
     let args = Args::parse();
 
