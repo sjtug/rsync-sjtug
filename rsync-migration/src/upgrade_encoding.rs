@@ -1,5 +1,3 @@
-#![allow(clippy::module_name_repetitions)]
-
 use std::time::Duration;
 
 use clap::Parser;
@@ -8,27 +6,43 @@ use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use redis::AsyncCommands;
 use tracing::{info, warn};
+use url::Url;
 
 use rsync_core::redis_::{acquire_instance_lock, RedisOpts};
-use rsync_core::utils::init_logger;
 
-use crate::index::scan_index;
-use crate::metadata::{try_parse, CFG_STD};
-use crate::opts::Opts;
+use crate::upgrade_encoding::index::scan_index;
+use crate::upgrade_encoding::metadata::{try_parse, CFG_STD};
 
 mod index;
 mod metadata;
-mod opts;
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    init_logger();
-    color_eyre::install()?;
+#[derive(Parser)]
+pub struct Args {
+    /// Redis URL.
+    #[clap(long)]
+    pub redis: Url,
+    /// Metadata namespace.
+    #[clap(long)]
+    pub redis_namespace: String,
+    /// Do actual upgrade. Will touch metadata server.
+    #[clap(long)]
+    pub r#do: bool,
+}
 
-    let opts = Opts::parse();
-    let redis_opts = RedisOpts::from(&opts);
+impl From<&Args> for RedisOpts {
+    fn from(opts: &Args) -> Self {
+        Self {
+            namespace: opts.redis_namespace.clone(),
+            force_break: false,
+            lock_ttl: 3 * 60,
+        }
+    }
+}
 
-    let redis = redis::Client::open(opts.redis)?;
+pub async fn upgrade_encoding(args: Args) -> Result<()> {
+    let redis_opts = RedisOpts::from(&args);
+
+    let redis = redis::Client::open(args.redis)?;
     let mut redis_conn = redis.get_async_connection().await?;
     let mut redis_write_conn = redis.get_async_connection().await?;
 
@@ -65,7 +79,7 @@ async fn main() -> Result<()> {
                     } else {
                         old_meta += 1;
                     }
-                    if opts.fix && !is_new {
+                    if args.r#do && !is_new {
                         let buf =
                             bincode::encode_to_vec(parsed, CFG_STD).expect("bincode encode failed");
                         redis_write_conn.hset(index, name, buf).await?;
@@ -80,6 +94,6 @@ async fn main() -> Result<()> {
         info!(index, new_meta, old_meta, "done");
     }
 
-    info!(fix = opts.fix, "all done");
+    info!(fix = args.r#do, "all done");
     Ok(())
 }

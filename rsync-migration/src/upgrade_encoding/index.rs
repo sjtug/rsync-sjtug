@@ -9,6 +9,7 @@ use rsync_core::redis_::async_iter_to_stream;
 /// # Errors
 ///
 /// Returns an error if failed to communicate with Redis.
+#[allow(clippy::module_name_repetitions)]
 pub async fn scan_index<'a>(
     redis: &'a mut (impl aio::ConnectionLike + Send),
     namespace: &'a str,
