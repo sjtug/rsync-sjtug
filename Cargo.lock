@@ -3325,6 +3325,7 @@ dependencies = [
  "dotenvy",
  "eyre",
  "futures",
+ "indicatif",
  "itertools 0.11.0",
  "redis",
  "rsync-core",
