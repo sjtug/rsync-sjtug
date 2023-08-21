@@ -2,6 +2,9 @@ on:
   push:
     branches:
       - master
+  pull_request:
+    branches:
+      - master
 
 name: Build
 
@@ -24,7 +27,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: build-${{ matrix.target }}
+          shared-key: build-${{ matrix.target }}-${{ github.ref }}
       - name: Setup Cross Toolchain
         if: matrix.cross
         uses: taiki-e/install-action@cross
