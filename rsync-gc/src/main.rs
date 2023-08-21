@@ -49,8 +49,7 @@ async fn main() -> Result<()> {
 
     info!("marking stale indices...");
     let mut stale_revs = keep_last_n(namespace, opts.keep, RevisionStatus::Live, &*pool).await?;
-    stale_revs
-        .extend(keep_last_n(namespace, opts.keep_partial, RevisionStatus::Stale, &*pool).await?);
+    stale_revs.extend(keep_last_n(namespace, opts.partial, RevisionStatus::Stale, &*pool).await?);
     info!(?stale_revs, "marked as stale");
 
     info!("querying stale objects...");

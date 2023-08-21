@@ -53,7 +53,7 @@ jobs:
       - uses: taiki-e/upload-rust-binary-action@v1
         name: Build and Upload
         with:
-          bin: rsync-gc,rsync-fetcher,rsync-gateway,rsync-fix-encoding,rsync-migration
+          bin: rsync-gc,rsync-fetcher,rsync-gateway,rsync-migration
           archive: rsync-sjtug-$target
           target: ${{ matrix.target }}
           checksum: sha512

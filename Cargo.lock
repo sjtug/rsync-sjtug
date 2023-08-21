@@ -3231,24 +3231,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rsync-fix-encoding"
-version = "0.1.0"
-dependencies = [
- "bincode 2.0.0-rc.2",
- "bincode 2.0.0-rc.3",
- "clap",
- "color-eyre",
- "eyre",
- "futures",
- "indicatif",
- "redis",
- "rsync-core",
- "tokio",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "rsync-gateway"
 version = "0.1.0"
 dependencies = [
@@ -3321,6 +3303,8 @@ dependencies = [
 name = "rsync-migration"
 version = "0.1.0"
 dependencies = [
+ "bincode 2.0.0-rc.2",
+ "bincode 2.0.0-rc.3",
  "clap",
  "dotenvy",
  "eyre",

@@ -11,10 +11,7 @@ pub struct Opts {
     pub keep: u32,
     /// How many partial revisions to keep.
     #[clap(short, long, default_value = "5")]
-    pub keep_partial: u32,
-    /// Whether to delete partial files.
-    #[clap(long, default_value = "false")]
-    pub delete_partial: bool,
+    pub partial: u32,
     /// S3 endpoint url.
     /// For specifying authentication, use environment variables:
     /// AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
