@@ -17,6 +17,9 @@ pub const COUNTER_RESOLVED_REGULAR: &str = "resolved_regular";
 pub const COUNTER_RESOLVED_LISTING: &str = "resolved_listing";
 pub const COUNTER_RESOLVED_MISSING: &str = "resolved_missing";
 pub const COUNTER_RESOLVED_ERROR: &str = "resolved_error";
+pub const HISTOGRAM_MISS_QUERY_TIME: &str = "miss_query_time";
+pub const HISTOGRAM_L1_QUERY_TIME: &str = "l1_query_time";
+pub const HISTOGRAM_L2_QUERY_TIME: &str = "l2_query_time";
 const ALLOWED_NAMESPACES: &[&str] = &["namespace"];
 
 pub fn init_metrics() -> Result<PrometheusHandle> {
@@ -39,6 +42,21 @@ pub fn init_metrics() -> Result<PrometheusHandle> {
     describe_counter!(COUNTER_RESOLVED_LISTING, "Resolved directory listing count");
     describe_counter!(COUNTER_RESOLVED_MISSING, "Missing path count");
     describe_counter!(COUNTER_RESOLVED_ERROR, "Error on resolving count");
+    describe_histogram!(
+        HISTOGRAM_MISS_QUERY_TIME,
+        Unit::Milliseconds,
+        "Query time on cache miss"
+    );
+    describe_histogram!(
+        HISTOGRAM_L1_QUERY_TIME,
+        Unit::Milliseconds,
+        "Query time on L1 cache hit"
+    );
+    describe_histogram!(
+        HISTOGRAM_L2_QUERY_TIME,
+        Unit::Milliseconds,
+        "Query time on L2 cache hit"
+    );
 
     let recorder = PrometheusBuilder::new().build_recorder();
     let handle = recorder.handle();

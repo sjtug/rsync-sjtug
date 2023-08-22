@@ -14,7 +14,8 @@ use tracing::{debug, instrument, warn};
 
 use crate::metrics::{
     COUNTER_L1_HIT, COUNTER_L2_HIT, COUNTER_MISS, COUNTER_POOR, COUNTER_SMALL,
-    HISTOGRAM_COMPRESSION_RATIO, HISTOGRAM_RESOLVED_SIZE,
+    HISTOGRAM_COMPRESSION_RATIO, HISTOGRAM_L1_QUERY_TIME, HISTOGRAM_L2_QUERY_TIME,
+    HISTOGRAM_MISS_QUERY_TIME, HISTOGRAM_RESOLVED_SIZE,
 };
 use crate::path_resolve::{ArchivedResolved, Resolved};
 
@@ -109,6 +110,7 @@ impl NSCacheInner {
                 .build(),
         }
     }
+    #[allow(clippy::cast_precision_loss)]
     #[instrument(skip_all, fields(key = % String::from_utf8_lossy(key)))]
     async fn get_or_insert(
         &self,
@@ -118,8 +120,12 @@ impl NSCacheInner {
     ) -> Result<Arc<Resolved>, Arc<Report>> {
         // We have this weird return type to avoid losing information during error propagation.
 
+        let started = Instant::now();
+
         // Fast path: already exists in L1 cache
         if let Some(resolved) = self.l1.get(key) {
+            let elapsed = started.elapsed();
+            histogram!(HISTOGRAM_L1_QUERY_TIME, elapsed.as_millis() as f64);
             increment_counter!(COUNTER_L1_HIT);
             return Ok(resolved);
         }
@@ -130,6 +136,8 @@ impl NSCacheInner {
             || {
                 increment_counter!(COUNTER_MISS);
                 init.map_ok(|resolved| {
+                    let elapsed = started.elapsed();
+                    histogram!(HISTOGRAM_MISS_QUERY_TIME, elapsed.as_millis() as f64);
                     let resolved_size = resolved.get_heap_size();
                     #[allow(clippy::cast_precision_loss)]
                     {
@@ -147,7 +155,12 @@ impl NSCacheInner {
                 async move {
                     tokio::task::spawn_blocking(move || {
                         let _guard = current_span.enter();
-                        maybe_compressed.decompress()
+                        let decompressed = maybe_compressed.decompress();
+
+                        let elapsed = started.elapsed();
+                        histogram!(HISTOGRAM_L2_QUERY_TIME, elapsed.as_millis() as f64);
+
+                        decompressed
                     })
                     .await
                     .map_err(|e| eyre!("decompress task failed: {}", e))
@@ -246,7 +259,6 @@ impl MaybeCompressed {
     pub fn decompress(&self) -> Arc<Resolved> {
         match self {
             Self::Compressed { data, len } => {
-                let started_at = Instant::now();
                 let decompressed =
                     zstd::bulk::decompress(data, *len).expect("incorrect decompress capacity");
                 let archived = unsafe { rkyv::archived_root::<Resolved>(&decompressed) };
@@ -256,8 +268,6 @@ impl MaybeCompressed {
                         &mut Infallible,
                     )
                     .expect("infallible");
-                // TODO metrics histogram of decompression speed
-                debug!(elapsed = ?started_at.elapsed(), "decompression complete");
                 Arc::new(deserialized)
             }
             Self::Uncompressed(resolved) => resolved.clone(),
