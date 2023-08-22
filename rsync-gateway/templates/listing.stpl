@@ -6,7 +6,7 @@
     <meta content="width=device-width, initial-scale=1, shrink-to-fit=no" name="viewport">
     <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.5.3/css/bootstrap.min.css" rel="stylesheet">
 
-    <title>Index of <%= title %>/ - SJTUG Mirror Index</title>
+    <title>Index of <%= title %> - SJTUG Mirror Index</title>
 </head>
 
 <body>
@@ -24,7 +24,7 @@
         <% for ListingEntry{filename, len, modify_time, is_dir} in entries { %>
         <tr>
             <td>
-                <a href="<%- href(cwd) | disp %>/<%- href(filename) | disp %>">
+                <a href="<%- href(filename) | disp %><% if *is_dir { %>/<% } %>">
                     <%= lossy_display(filename) | disp %><% if *is_dir { %>/<% } %>
                 </a>
             </td>

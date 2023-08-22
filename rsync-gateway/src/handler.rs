@@ -30,15 +30,23 @@ pub async fn main_handler(
     req: HttpRequest,
 ) -> impl Responder {
     let prefix = prefix.as_str();
+    let full_path = req.path();
     let path = req.match_info().get("path").map_or_else(Vec::new, |path| {
-        percent_encoding::percent_decode(path.trim_start_matches('/').as_bytes()).collect()
+        percent_encoding::percent_decode(path.trim_end_matches('/').as_bytes()).collect()
     });
+    let req_path = if full_path.ends_with('/') {
+        let mut p = path.clone();
+        p.push(b'/');
+        p
+    } else {
+        path.clone()
+    };
 
     let namespace = &endpoint.namespace;
     let s3_prefix = &endpoint.s3_prefix;
     let Some(Revision { revision, generated_at }) = state.revision() else {
         return Either::Left(render_internal_error(
-            &path,
+            &req_path,
             prefix,
             None,
             Utc::now(),
@@ -60,7 +68,7 @@ pub async fn main_handler(
         Err(e) => {
             let query_time = query_start.elapsed();
             return Either::Left(render_internal_error(
-                &path,
+                &req_path,
                 prefix,
                 Some(revision),
                 Utc::now(),
@@ -72,7 +80,14 @@ pub async fn main_handler(
     };
     let query_time = query_start.elapsed();
 
-    Either::Right(resolved.to_responder(&path, prefix, revision, generated_at, query_time))
+    Either::Right(resolved.to_responder(
+        &req_path,
+        full_path,
+        prefix,
+        revision,
+        generated_at,
+        query_time,
+    ))
 }
 
 pub async fn rev_handler(

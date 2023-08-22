@@ -126,7 +126,6 @@ where
     N: TemplateOnce,
 {
     pub title: &'a str,
-    pub cwd: &'a [u8],
     pub entries: I,
     pub navbar: N,
     pub footer: T,

@@ -23,6 +23,7 @@ impl Resolved {
     pub fn to_responder(
         &self,
         req_path: &[u8],
+        full_path: &str,
         prefix: &str,
         revision: i32,
         generated_at: DateTime<Utc>,
@@ -30,6 +31,10 @@ impl Resolved {
     ) -> impl Responder {
         match self {
             Self::Directory { entries } => {
+                if !req_path.ends_with(b"/") {
+                    let raw_cwd = full_path.rsplit_once('/').map_or(full_path, |(_, cwd)| cwd);
+                    return Either::Right(Redirect::to(format!("{raw_cwd}/")));
+                }
                 let orig_entries = entries.iter().filter(|entry| entry.filename != b".");
                 let parent_entry = ListingEntry {
                     filename: b"..".to_vec(),
@@ -37,28 +42,22 @@ impl Resolved {
                     modify_time: None,
                     is_dir: true,
                 };
-                let entries = if req_path.is_empty() {
+                let root = req_path.is_empty() || req_path == b"/";
+                let entries = if root {
                     itertools::Either::Left(orig_entries)
                 } else {
                     itertools::Either::Right(iter::once(&parent_entry).chain(orig_entries))
                 };
-                let cwd = if req_path.is_empty() {
-                    prefix.as_bytes()
-                } else {
-                    req_path.rsplit_once_str(b"/").map_or(req_path, |(_, s)| s)
-                };
                 let root_href = req_path_to_root_href(prefix, req_path);
-                let path = String::from_utf8_lossy(req_path);
-                let title = if path.is_empty() {
-                    prefix.to_string()
+                let title = if root {
+                    format!("{prefix}/")
                 } else {
-                    format!("{prefix}/{path}")
+                    format!("{prefix}/{}", String::from_utf8_lossy(req_path))
                 };
                 let components: Vec<_> = title.split('/').collect_vec();
                 let navbar = comps_to_navbar(&components);
                 let rendered = ListingTemplate {
                     title: &title,
-                    cwd,
                     entries,
                     navbar,
                     footer: FooterRevisionTemplate {
@@ -214,7 +213,11 @@ fn comps_to_navbar<'a>(comps: &'a [&'a str]) -> impl TemplateOnce + 'a {
 }
 
 fn req_path_to_root_href(prefix: &str, req_path: &[u8]) -> String {
-    let depth = req_path.find_iter(b"/").count();
+    let depth = if req_path == b"/" {
+        0
+    } else {
+        req_path.find_iter(b"/").count()
+    };
     if depth > 0 {
         iter::repeat("../").take(depth).join("")
     } else if req_path.is_empty() {
@@ -363,7 +366,8 @@ mod tests {
 
     #[proptest(async = "tokio")]
     async fn must_render_resolved_prop(
-        req_path: Vec<u8>,
+        mut req_path: Vec<u8>,
+        raw_path: String,
         prefix: String,
         revision: i32,
         #[strategy(proptest_arbitrary_interop::arb::< DateTime < Utc >> ())] generated_at: DateTime<
@@ -372,13 +376,23 @@ mod tests {
         query_time: Duration,
         #[strategy(resolved_non_regular_strategy())] resolved: Resolved,
     ) {
-        // ensured by actix middleware
-        prop_assume!(!req_path.ends_with(b"/"));
         // ensured by validate_config
         prop_assume!(!prefix.is_empty() && !prefix.starts_with('/'));
+        // no redirect
+        if matches!(resolved, Resolved::Directory { .. }) {
+            req_path.push(b'/');
+        }
+
         let req = TestRequest::get().to_http_request();
         let resp = resolved
-            .to_responder(&req_path, &prefix, revision, generated_at, query_time)
+            .to_responder(
+                &req_path,
+                &raw_path,
+                &prefix,
+                revision,
+                generated_at,
+                query_time,
+            )
             .respond_to(&req);
         let Ok(body) = to_bytes(resp.into_body()).await else {
             panic!("must to bytes");
@@ -399,8 +413,6 @@ mod tests {
         err: String,
         #[strategy(proptest_arbitrary_interop::arb::< Uuid > ())] request_id: Uuid,
     ) {
-        // ensured by actix middleware
-        prop_assume!(!req_path.ends_with(b"/"));
         // ensured by validate_config
         prop_assume!(!prefix.is_empty() && !prefix.starts_with('/'));
         let req = TestRequest::get().to_http_request();

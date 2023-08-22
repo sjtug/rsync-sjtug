@@ -256,7 +256,7 @@ impl MaybeCompressed {
                         &mut Infallible,
                     )
                     .expect("infallible");
-                // DEBUG metrics histogram of decompression speed
+                // TODO metrics histogram of decompression speed
                 debug!(elapsed = ?started_at.elapsed(), "decompression complete");
                 Arc::new(deserialized)
             }

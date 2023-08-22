@@ -221,7 +221,7 @@ mod db_required {
             .unwrap();
         let app = test::init_service(
             App::new()
-                .wrap(NormalizePath::new(TrailingSlash::Trim))
+                .wrap(NormalizePath::new(TrailingSlash::MergeOnly))
                 .wrap(TracingLogger::default())
                 .configure(cfg),
         )
@@ -260,7 +260,10 @@ mod db_required {
         }
 
         // Should follow symlinks to dirs.
-        for (uri, _path) in [("/test/m/n", "/test/p"), ("/test/h/i/j/j/j/k", "/test/v/w")] {
+        for (uri, _path) in [
+            ("/test/m/n/", "/test/p/"),
+            ("/test/h/i/j/j/j/k/", "/test/v/w/"),
+        ] {
             let req = test::TestRequest::get().uri(uri).to_request();
             let resp = test::call_service(&app, req).await;
             assert_eq!(resp.status(), StatusCode::OK);
@@ -289,9 +292,16 @@ mod db_required {
             "/test/%E4%BD%A0%E5%A5%BD%20%E4%B8%96%E7%95%8C2",
             "/test/int%C3%A9r%C3%AAt2",
         ] {
-            let req = test::TestRequest::get().uri(uri).to_request();
+            let req = test::TestRequest::get()
+                .uri(&format!("{uri}/"))
+                .to_request();
             let resp = test::call_service(&app, req).await;
             assert_eq!(resp.status(), StatusCode::OK);
+
+            // Redirect to trailing slash.
+            let req = test::TestRequest::get().uri(uri).to_request();
+            let resp = test::call_service(&app, req).await;
+            assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
         }
 
         assert!(!listener_handle.is_finished(), "listener died");

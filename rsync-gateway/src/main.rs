@@ -60,7 +60,7 @@ pub async fn main() -> Result<()> {
     let mut server = HttpServer::new({
         move || {
             App::new()
-                .wrap(NormalizePath::new(TrailingSlash::Trim).use_redirects())
+                .wrap(NormalizePath::new(TrailingSlash::MergeOnly).use_redirects())
                 .wrap(TracingLogger::default())
                 .configure(cfg.clone())
                 .route("/_metrics", web::get().to(metrics::metrics_handler))
