@@ -333,6 +333,7 @@ mod tests {
                 if msg.r#type == "error" {
                     if msg.message.contains("Forbidden code point")
                         || msg.message.contains("Saw U+0000 in stream")
+                        || msg.message.contains("Astral non-character")
                     {
                         // NOTE we do not escape invalid codepoints due to performance concerns.
                         continue;
