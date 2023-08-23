@@ -5,11 +5,7 @@
     <meta charset="utf-8">
     <meta content="width=device-width, initial-scale=1, shrink-to-fit=no" name="viewport">
     <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.5.3/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .jumbotron {
-            background-color: #fff
-        }
-    </style>
+    <style><% include!("styles.css"); %></style>
 
     <title><%= code %> - SJTUG Mirror Index</title>
 </head>
@@ -48,6 +44,7 @@
 </div>
 <script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.6.4/jquery.slim.min.js"></script>
 <script src="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.5.3/js/bootstrap.min.js"></script>
+<script><% include!("localize.js"); %></script>
 </body>
 
 </html>

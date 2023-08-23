@@ -72,10 +72,7 @@ pub struct Revision {
 pub struct RevisionStat {
     pub revision: i64,
     pub status: RevisionStatus,
-    #[cfg_attr(
-        test,
-        proptest(strategy = "proptest_arbitrary_interop::arb::<DateTime<Utc>>()")
-    )]
+    #[cfg_attr(test, proptest(strategy = "crate::tests::datetime_strategy()"))]
     pub created_at: DateTime<Utc>,
     #[cfg_attr(
         test,

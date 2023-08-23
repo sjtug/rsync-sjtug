@@ -371,9 +371,7 @@ mod tests {
         raw_path: String,
         prefix: String,
         revision: i32,
-        #[strategy(proptest_arbitrary_interop::arb::< DateTime < Utc >> ())] generated_at: DateTime<
-            Utc,
-        >,
+        #[strategy(crate::tests::datetime_strategy())] generated_at: DateTime<Utc>,
         query_time: Duration,
         #[strategy(resolved_non_regular_strategy())] resolved: Resolved,
     ) {
@@ -407,9 +405,7 @@ mod tests {
         req_path: Vec<u8>,
         prefix: String,
         revision: Option<i32>,
-        #[strategy(proptest_arbitrary_interop::arb::< DateTime < Utc >> ())] generated_at: DateTime<
-            Utc,
-        >,
+        #[strategy(crate::tests::datetime_strategy())] generated_at: DateTime<Utc>,
         query_time: Duration,
         err: String,
         #[strategy(proptest_arbitrary_interop::arb::< Uuid > ())] request_id: Uuid,
@@ -439,9 +435,7 @@ mod tests {
     async fn must_render_revision_stats_prop(
         entries: Vec<RevisionStat>,
         prefix: String,
-        #[strategy(proptest_arbitrary_interop::arb::< DateTime < Utc >> ())] generated_at: DateTime<
-            Utc,
-        >,
+        #[strategy(crate::tests::datetime_strategy())] generated_at: DateTime<Utc>,
         query_time: Duration,
     ) {
         // ensured by validate_config

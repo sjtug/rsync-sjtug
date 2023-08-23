@@ -1,0 +1,9 @@
+body {
+    font-family: sans-serif;
+}
+time {
+    display: inline-block;
+}
+.jumbotron {
+    background-color: #fff
+}

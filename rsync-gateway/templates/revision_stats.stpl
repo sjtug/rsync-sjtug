@@ -5,6 +5,7 @@
     <meta charset="utf-8">
     <meta content="width=device-width, initial-scale=1, shrink-to-fit=no" name="viewport">
     <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.5.3/css/bootstrap.min.css" rel="stylesheet">
+    <style><% include!("styles.css"); %></style>
 
     <title>Revisions of <%= prefix %> - SJTUG Mirror Index</title>
 </head>
@@ -27,7 +28,7 @@
         <% for RevisionStat { revision, status, created_at, elapsed, count, sum } in entries { %>
         <tr>
             <td><%= revision %></td>
-            <td><%= datetime(*created_at) | disp %></td>
+            <td><%- datetime(*created_at) | disp %></td>
             <td>
                 <% if let Some(elapsed) = elapsed { %>
                 <%= pg_interval(elapsed) | disp %>
@@ -77,6 +78,7 @@
 </div>
 <script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.6.4/jquery.slim.min.js"></script>
 <script src="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.5.3/js/bootstrap.min.js"></script>
+<script><% include!("localize.js"); %></script>
 </body>
 
 </html>

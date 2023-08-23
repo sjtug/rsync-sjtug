@@ -5,6 +5,7 @@
     <meta charset="utf-8">
     <meta content="width=device-width, initial-scale=1, shrink-to-fit=no" name="viewport">
     <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.5.3/css/bootstrap.min.css" rel="stylesheet">
+    <style><% include!("styles.css"); %></style>
 
     <title>Index of <%= title %> - SJTUG Mirror Index</title>
 </head>
@@ -37,7 +38,7 @@
             </td>
             <td class="d-none d-sm-block text-right">
                 <% if let Some(modify_time) = modify_time { %>
-                <%= datetime(*modify_time) | disp %>
+                <%- datetime(*modify_time) | disp %>
                 <% } else { %>
                 -
                 <% } %>
@@ -48,6 +49,7 @@
     </table>
     <%+ footer %>
 </div>
+<script><% include!("localize.js"); %></script>
 </body>
 
 </html>

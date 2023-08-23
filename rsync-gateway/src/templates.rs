@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use bigdecimal::ToPrimitive;
 use bytesize::ByteSize;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use sailfish::runtime::{Buffer, Render};
 use sailfish::TemplateOnce;
 use sqlx::postgres::types::PgInterval;
@@ -35,7 +35,11 @@ fn href_render(name: impl Render) -> impl Display {
 }
 
 fn datetime(dt: DateTime<Utc>) -> impl Display {
-    dt.format("%Y-%m-%d %H:%M:%S")
+    format!(
+        r#"<time datetime="{}">{}</time>"#,
+        dt.to_rfc3339_opts(SecondsFormat::Secs, false),
+        dt.format("%Y-%m-%d %H:%M:%S %Z")
+    )
 }
 
 fn duration(dur: Duration) -> impl Display {

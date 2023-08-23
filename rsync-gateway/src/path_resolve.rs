@@ -110,9 +110,7 @@ pub struct ListingEntry {
     #[get_size(ignore)]
     #[cfg_attr(
         test,
-        proptest(
-            strategy = "proptest::option::of(proptest_arbitrary_interop::arb::<DateTime<Utc>>())"
-        )
+        proptest(strategy = "proptest::option::of(crate::tests::datetime_strategy())")
     )]
     pub modify_time: Option<DateTime<Utc>>,
     pub is_dir: bool,

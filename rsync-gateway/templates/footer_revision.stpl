@@ -2,5 +2,5 @@
     是 SJTUG 用于从 rsync 上游同步到对象存储的工具。</p>
 <p class="small text-muted">
     <a href="<%- href_str(root_href) | disp %>/_revisions">Revision <%= revision %></a>，
-    最后更新于 <%= datetime(generated_at) | disp %>，查询时间 <%= duration(query_time) | disp %>
+    最后更新于 <%- datetime(generated_at) | disp %>，查询时间 <%= duration(query_time) | disp %>
 </p>

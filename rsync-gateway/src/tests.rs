@@ -1,3 +1,25 @@
+use actix_web::cookie::time;
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use proptest::prop_compose;
+use proptest::strategy::{Just, Strategy};
+use time::util::days_in_year;
+
+prop_compose! {
+    pub fn datetime_strategy()(
+        year in 1970..=2100,
+    )(
+        year in Just(year),
+        ord in 1..=days_in_year(year),
+        secs in 0..=86399u32,
+        nano in 0..=999_999_999u32  // unfortunately html time tag doesn't support leap seconds
+    ) -> DateTime<Utc> {
+        let date = NaiveDate::from_yo_opt(year, u32::from(ord)).expect("valid date");
+        let time = NaiveTime::from_num_seconds_from_midnight_opt(secs, nano).expect("valid time");
+        let dt = NaiveDateTime::new(date, time);
+        DateTime::from_utc(dt, Utc)
+    }
+}
+
 mod db_required {
     use std::collections::{BTreeMap, HashMap};
     use std::time::UNIX_EPOCH;

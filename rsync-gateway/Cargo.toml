@@ -54,4 +54,5 @@ reqwest = { version = "0.11", default-features = false, features = ["json"] }
 rstest = "0.18"
 rsync-core = { path = "../rsync-core", features = ["tests"] }
 test-strategy = "0.3"
+time = "0.3"
 uuid = { version = "1.4", features = ["arbitrary"] }
