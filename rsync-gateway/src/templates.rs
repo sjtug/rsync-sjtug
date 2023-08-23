@@ -1,11 +1,10 @@
-use std::fmt::{Display, Formatter};
-use std::panic;
-use std::panic::AssertUnwindSafe;
+use std::borrow::Cow;
+use std::fmt::Display;
 use std::time::Duration;
 
 use bigdecimal::ToPrimitive;
+use bytesize::ByteSize;
 use chrono::{DateTime, Utc};
-use humansize::{ISizeFormatter, SizeFormatter, BINARY};
 use sailfish::runtime::{Buffer, Render};
 use sailfish::TemplateOnce;
 use sqlx::postgres::types::PgInterval;
@@ -71,49 +70,13 @@ fn pg_interval(interval: &PgInterval) -> impl Display {
 }
 
 fn size(len: u64) -> impl Display {
-    SizeFormatter::new(len, BINARY)
+    ByteSize::b(len).to_string_as(true)
 }
 
 fn size_big(len: &BigDecimal) -> impl Display {
-    len.to_f64().map_or(either::Either::Right("LARGE"), |len| {
-        either::Either::Left(SafeFormatter::new(
-            ISizeFormatter::new(len, BINARY),
-            "LARGE",
-        ))
+    len.to_u64().map_or(Cow::Borrowed("LARGE"), |len| {
+        Cow::Owned(ByteSize::b(len).to_string_as(true))
     })
-}
-
-// COMMIT: crash if
-/// Helper struct for formatting values that may panic.
-///
-/// Works around a bug in `ISizeFormatter` that causes it to panic on large values.
-struct SafeFormatter<F> {
-    inner: F,
-    fallback: &'static str,
-}
-
-impl<F> SafeFormatter<F> {
-    pub const fn new(inner: F, fallback: &'static str) -> Self {
-        Self { inner, fallback }
-    }
-}
-
-fn catch_unwind_silent<F: FnOnce() -> R + panic::UnwindSafe, R>(f: F) -> std::thread::Result<R> {
-    let prev_hook = panic::take_hook();
-    panic::set_hook(Box::new(|_| {}));
-    let result = panic::catch_unwind(f);
-    panic::set_hook(prev_hook);
-    result
-}
-
-impl<F> Display for SafeFormatter<F>
-where
-    F: Display,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        catch_unwind_silent(AssertUnwindSafe(|| self.inner.fmt(f)))
-            .unwrap_or_else(|_| f.write_str(self.fallback))
-    }
 }
 
 /// Template for the listing page.

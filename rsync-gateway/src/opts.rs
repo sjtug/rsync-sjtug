@@ -1,3 +1,4 @@
+use bytesize::ByteSize;
 use std::collections::BTreeMap;
 use std::env;
 
@@ -26,8 +27,18 @@ pub struct Opts {
     pub s3_region: String,
     /// PostgreSQL database url.
     pub database_url: String,
+    /// Cache options.
+    pub cache: CacheOpts,
     /// Gateway endpoints.
     pub endpoints: BTreeMap</* http prefix */ String, Endpoint>,
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub struct CacheOpts {
+    /// L1 cache size.
+    pub l1_size: ByteSize,
+    /// L2 cache size.
+    pub l2_size: ByteSize,
 }
 
 impl Default for Opts {
@@ -35,6 +46,10 @@ impl Default for Opts {
         Self {
             bind: vec!["127.0.0.1:8080".into(), "[::1]:8080".into()],
             update_interval: 300,
+            cache: CacheOpts {
+                l1_size: ByteSize::mb(100),
+                l2_size: ByteSize::gb(1),
+            },
             s3_url: String::new(),
             s3_region: String::new(),
             database_url: String::from("postgres://postgres@localhost:5432/rsync-sjtug"),

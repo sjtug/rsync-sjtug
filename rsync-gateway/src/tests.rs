@@ -6,6 +6,7 @@ mod db_required {
     use actix_web::middleware::{NormalizePath, TrailingSlash};
     use actix_web::{test, App};
     use async_trait::async_trait;
+    use bytesize::ByteSize;
     use chrono::DateTime;
     use eyre::Result;
     use maplit::btreemap;
@@ -22,7 +23,7 @@ mod db_required {
     use rsync_core::utils::{test_init_logger, ToHex};
 
     use crate::app::configure;
-    use crate::opts::{Endpoint, Opts};
+    use crate::opts::{CacheOpts, Endpoint, Opts};
 
     const MOCK_PRESIGN_SCHEME: Scheme = Scheme::Custom("mock-presign");
 
@@ -207,6 +208,10 @@ mod db_required {
             s3_url: String::new(),
             s3_region: String::new(),
             database_url: String::new(),
+            cache: CacheOpts {
+                l1_size: ByteSize::mib(32),
+                l2_size: ByteSize::mib(128),
+            },
             endpoints: btreemap! {
                 String::from("test") =>
                 Endpoint {

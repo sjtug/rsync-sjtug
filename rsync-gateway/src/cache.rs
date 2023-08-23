@@ -17,12 +17,9 @@ use crate::metrics::{
     HISTOGRAM_COMPRESSION_RATIO, HISTOGRAM_L1_QUERY_TIME, HISTOGRAM_L2_QUERY_TIME,
     HISTOGRAM_MISS_QUERY_TIME, HISTOGRAM_RESOLVED_SIZE,
 };
+use crate::opts::CacheOpts;
 use crate::path_resolve::{ArchivedResolved, Resolved};
 
-/// L1 cache size is 32MB.
-const L1_CACHE_SIZE: u64 = 32 * 1024 * 1024;
-/// L2 cache size is 128MB.
-const L2_CACHE_SIZE: u64 = 128 * 1024 * 1024;
 /// Pre-sign timeout is 24 hours.
 pub const PRESIGN_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24);
 
@@ -36,14 +33,19 @@ pub const PRESIGN_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24);
 pub struct NSCache {
     inner: ArcSwap<NSCacheInner>,
     sync_l2: bool, // do not return until L2 cache is synced
+    opts: CacheOpts,
 }
 
 impl NSCache {
     /// Create a new cache.
-    pub fn new() -> Self {
+    pub fn new(opts: CacheOpts) -> Self {
         Self {
-            inner: ArcSwap::new(Arc::new(NSCacheInner::new())),
+            inner: ArcSwap::new(Arc::new(NSCacheInner::new(
+                opts.l1_size.as_u64(),
+                opts.l2_size.as_u64(),
+            ))),
             sync_l2: false,
+            opts,
         }
     }
     /// Create a new cache.
@@ -52,15 +54,22 @@ impl NSCache {
     /// from `get_or_insert`. In other words, all inserted value are guaranteed to be in L2 cache
     /// when `get_or_insert` returns.
     #[cfg(test)]
-    pub fn new_with_sync_l2() -> Self {
+    pub fn new_with_sync_l2(opts: CacheOpts) -> Self {
         Self {
-            inner: ArcSwap::new(Arc::new(NSCacheInner::new())),
+            inner: ArcSwap::new(Arc::new(NSCacheInner::new(
+                opts.l1_size.as_u64(),
+                opts.l2_size.as_u64(),
+            ))),
             sync_l2: true,
+            opts,
         }
     }
     /// Invalidate the cache. Takes effect immediately.
     pub fn invalidate(&self) {
-        self.inner.store(Arc::new(NSCacheInner::new()));
+        self.inner.store(Arc::new(NSCacheInner::new(
+            self.opts.l1_size.as_u64(),
+            self.opts.l2_size.as_u64(),
+        )));
     }
     /// Invalidate L1 cache only.
     /// Debug only.
@@ -88,10 +97,10 @@ pub struct NSCacheInner {
 }
 
 impl NSCacheInner {
-    fn new() -> Self {
+    fn new(l1_capacity: u64, l2_capacity: u64) -> Self {
         Self {
             l1: Cache::builder()
-                .max_capacity(L1_CACHE_SIZE)
+                .max_capacity(l1_capacity)
                 // expire file entries after pre-sign timeout
                 .expire_after(ExpiryPolicy)
                 // we use heap size as weight
@@ -100,7 +109,7 @@ impl NSCacheInner {
                 })
                 .build(),
             l2: Cache::builder()
-                .max_capacity(L2_CACHE_SIZE)
+                .max_capacity(l2_capacity)
                 // expire file entries after pre-sign timeout
                 .expire_after(ExpiryPolicy)
                 // we use heap size as weight
@@ -315,6 +324,7 @@ impl Expiry<Vec<u8>, Arc<MaybeCompressed>> for ExpiryPolicy {
 mod tests {
     #![allow(clippy::explicit_deref_methods)]
 
+    use bytesize::ByteSize;
     use std::future::ready;
 
     use eyre::eyre;
@@ -326,7 +336,13 @@ mod tests {
     use tokio::sync::oneshot;
 
     use crate::cache::NSCache;
+    use crate::opts::CacheOpts;
     use crate::path_resolve::Resolved;
+
+    const CACHE_CONFIG: CacheOpts = CacheOpts {
+        l1_size: ByteSize::mib(32),
+        l2_size: ByteSize::mib(128),
+    };
 
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Arbitrary)]
     enum InvalidateLevel {
@@ -353,7 +369,7 @@ mod tests {
 
     #[proptest(async = "tokio")]
     async fn must_ok_refl_prop(key: Vec<u8>, resolved: Resolved, invalidate: InvalidateLevel) {
-        let cache = NSCache::new_with_sync_l2();
+        let cache = NSCache::new_with_sync_l2(CACHE_CONFIG);
         let result = cache
             .get_or_insert(&key, ready(Ok(resolved.clone())))
             .await
@@ -385,7 +401,7 @@ mod tests {
         #[strategy(level_no_all_strategy())] invalidate: InvalidateLevel,
     ) {
         prop_assume!(key1 != key2);
-        let cache = NSCache::new_with_sync_l2();
+        let cache = NSCache::new_with_sync_l2(CACHE_CONFIG);
         cache
             .get_or_insert(&key1, ready(Ok(resolved1)))
             .await
@@ -414,7 +430,7 @@ mod tests {
     #[case(InvalidateLevel::None)]
     #[tokio::test]
     async fn must_err_refl(#[case] invalidate: InvalidateLevel) {
-        let cache = NSCache::new_with_sync_l2();
+        let cache = NSCache::new_with_sync_l2(CACHE_CONFIG);
 
         let result = cache.get_or_insert(&[1], ready(Err(eyre!("boom1")))).await;
         if let Err(e) = &result {
@@ -435,7 +451,7 @@ mod tests {
 
     #[tokio::test]
     async fn must_race() {
-        let cache = NSCache::new();
+        let cache = NSCache::new(CACHE_CONFIG);
 
         let (tx, rx) = oneshot::channel();
         let resolved = Resolved::Directory { entries: vec![] };

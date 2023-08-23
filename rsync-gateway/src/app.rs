@@ -53,7 +53,7 @@ pub async fn configure(
     let prefix_state: Arc<Vec<_>> = Arc::new(
         future::try_join_all(opts.endpoints.iter().map(|(prefix, endpoint)| async {
             let prefix = prefix.trim_end_matches('/').to_string();
-            let cache = Arc::new(NSCache::new());
+            let cache = Arc::new(NSCache::new(opts.cache));
             let op = op_builder(opts, endpoint)?;
             let (guard, revision) = listen_for_updates(
                 &endpoint.namespace,
