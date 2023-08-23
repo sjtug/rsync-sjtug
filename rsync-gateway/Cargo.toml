@@ -14,7 +14,6 @@ bstr = "1.2"
 bytesize = { version = "1.2", features = ["serde"] }
 chrono = { version = "0.4", features = ["rkyv"] }
 dotenvy = "0.15"
-either = "1.8"
 eyre = "0.6"
 figment = { version = "0.10", features = ["toml", "env"] }
 futures = "0.3"
