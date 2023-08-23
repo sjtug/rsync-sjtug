@@ -104,6 +104,7 @@ async fn resolve_listing<'a>(
 #[derive(Debug, Clone, Eq, PartialEq, GetSize, Archive, Serialize, Deserialize)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ListingEntry {
+    #[cfg_attr(test, proptest(regex = "[^/\0]+"))]
     pub filename: Vec<u8>,
     pub len: Option<u64>,
     #[get_size(ignore)]
