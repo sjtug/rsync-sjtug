@@ -4,7 +4,6 @@ use std::sync::Arc;
 use actix_web::guard::Guard;
 use actix_web::web::{Data, ServiceConfig};
 use actix_web::{guard, web};
-
 use eyre::{Report, Result};
 use futures::future;
 use opendal::Operator;
@@ -16,7 +15,7 @@ use rsync_core::utils::AbortJoinHandle;
 use crate::cache::NSCache;
 use crate::handler;
 use crate::listener::RevisionsChangeListener;
-use crate::opts::{Endpoint, Opts};
+use crate::opts::{Config, Endpoint};
 use crate::state::{listen_for_updates, State};
 
 pub struct Prefix(pub String);
@@ -33,7 +32,7 @@ fn get_or_head() -> impl Guard + 'static {
     guard::Any(guard::Get()).or(guard::Head())
 }
 
-pub fn default_op_builder(opts: &Opts, ep: &Endpoint) -> Result<Operator> {
+pub fn default_op_builder(opts: &Config, ep: &Endpoint) -> Result<Operator> {
     #[allow(clippy::needless_question_mark)] // false positive
     build_operator(&S3Opts {
         region: opts.s3_region.clone(),
@@ -43,8 +42,8 @@ pub fn default_op_builder(opts: &Opts, ep: &Endpoint) -> Result<Operator> {
 }
 
 pub async fn configure(
-    opts: &Opts,
-    op_builder: impl for<'a> Fn(&'a Opts, &'a Endpoint) -> Result<Operator>,
+    opts: &Config,
+    op_builder: impl for<'a> Fn(&'a Config, &'a Endpoint) -> Result<Operator>,
     pool: PgPool,
 ) -> Result<(AbortJoinHandle<()>, impl Fn(&mut ServiceConfig) + Clone)> {
     let listener = RevisionsChangeListener::default();

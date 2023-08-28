@@ -13,12 +13,16 @@ bigdecimal = "0.4"
 bstr = "1.2"
 bytesize = { version = "1.2", features = ["serde"] }
 chrono = { version = "0.4", features = ["rkyv"] }
+clap = { version = "4.3", features = ["derive"] }
+doku = "0.21"
 dotenvy = "0.15"
 eyre = "0.6"
 figment = { version = "0.10", features = ["toml", "env"] }
 futures = "0.3"
 get-size = { version = "0.1", features = ["derive"] }
 itertools = "0.11"
+lazy-regex = "3.0"
+line-span = "0.1"
 metrics = "0.21"
 metrics-exporter-prometheus = "0.12"
 metrics-tracing-context = "0.14"
@@ -54,4 +58,5 @@ rstest = "0.18"
 rsync-core = { path = "../rsync-core", features = ["tests"] }
 test-strategy = "0.3"
 time = "0.3"
+toml = "0.7"
 uuid = { version = "1.4", features = ["arbitrary"] }

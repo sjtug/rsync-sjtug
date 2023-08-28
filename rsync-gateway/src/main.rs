@@ -10,9 +10,10 @@ use actix_web::middleware::TrailingSlash;
 use actix_web::web::Data;
 use actix_web::{web, App, HttpServer};
 use actix_web_lab::middleware::NormalizePath;
+use clap::Parser;
 use eyre::Result;
 use sqlx::PgPool;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 use tracing_actix_web::TracingLogger;
 
 use rsync_core::pg_lock::PgLock;
@@ -20,7 +21,7 @@ use rsync_core::utils::{init_color_eyre, init_logger};
 
 use crate::app::{configure, default_op_builder};
 use crate::metrics::init_metrics;
-use crate::opts::{load_config, validate_config};
+use crate::opts::{load_config, patch_generated_config, validate_config, Config, Opts};
 
 mod app;
 mod cache;
@@ -43,32 +44,40 @@ pub async fn main() -> Result<()> {
     init_logger();
     init_color_eyre()?;
 
+    let opts = Opts::parse();
+    if opts.generate_config {
+        println!("{}", patch_generated_config(doku::to_toml::<Config>()));
+        return Ok(());
+    }
+
     let metrics_handle = init_metrics()?;
 
     drop(dotenvy::dotenv());
-    let opts = load_config()?;
-    validate_config(&opts)?;
+    let cfg = load_config(&opts.config)?;
+    validate_config(&cfg)?;
 
-    let pool = PgPool::connect(&opts.database_url).await?;
+    info!(?cfg, "Loaded config");
+
+    let pool = PgPool::connect(&cfg.database_url).await?;
     // Shared lock table structure to prevent schema changes.
     let system_lock = PgLock::new_shared("_system");
     let system_guard = system_lock.lock(pool.acquire().await?).await?;
     // No need to lock namespace because write operations can be performed in parallel with read.
 
-    let (listener_handle, cfg) = configure(&opts, default_op_builder, pool.clone()).await?;
+    let (listener_handle, actix_cfg) = configure(&cfg, default_op_builder, pool.clone()).await?;
 
     let mut server = HttpServer::new({
         move || {
             App::new()
                 .wrap(NormalizePath::new(TrailingSlash::MergeOnly).use_redirects())
                 .wrap(TracingLogger::default())
-                .configure(cfg.clone())
+                .configure(actix_cfg.clone())
                 .route("/_metrics", web::get().to(metrics::metrics_handler))
                 .app_data(Data::new(metrics_handle.clone()))
         }
     });
 
-    for bind in &opts.bind {
+    for bind in &cfg.bind {
         server = server.bind(bind)?;
     }
     tokio::select! {

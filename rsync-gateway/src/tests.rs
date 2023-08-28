@@ -3,6 +3,9 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use proptest::prop_compose;
 use proptest::strategy::Just;
 use time::util::days_in_year;
+use toml::Value;
+
+use crate::opts::{patch_generated_config, Config};
 
 prop_compose! {
     pub fn datetime_strategy()(
@@ -18,6 +21,12 @@ prop_compose! {
         let dt = NaiveDateTime::new(date, time);
         DateTime::from_utc(dt, Utc)
     }
+}
+
+#[test]
+fn must_generate_example_config() {
+    let generated = patch_generated_config(doku::to_toml::<Config>());
+    toml::from_str::<Value>(&generated).expect("generated config must be valid");
 }
 
 mod db_required {
@@ -45,7 +54,7 @@ mod db_required {
     use rsync_core::utils::{test_init_logger, ToHex};
 
     use crate::app::configure;
-    use crate::opts::{CacheOpts, Endpoint, Opts};
+    use crate::opts::{CacheOpts, Config, Endpoint};
 
     const MOCK_PRESIGN_SCHEME: Scheme = Scheme::Custom("mock-presign");
 
@@ -133,7 +142,7 @@ mod db_required {
     }
 
     // Enforcing the HRTB is necessary to avoid a lifetime error.
-    const fn assert_hrtb<F: for<'a> Fn(&'a Opts, &'a Endpoint) -> Result<Operator>>(f: F) -> F {
+    const fn assert_hrtb<F: for<'a> Fn(&'a Config, &'a Endpoint) -> Result<Operator>>(f: F) -> F {
         f
     }
 
@@ -224,7 +233,7 @@ mod db_required {
             move |_: &_, _: &_| Ok(mock_presign_operator(s3_presign_map.clone()))
         };
 
-        let opts = Opts {
+        let opts = Config {
             bind: vec![],
             update_interval: 999,
             s3_url: String::new(),
