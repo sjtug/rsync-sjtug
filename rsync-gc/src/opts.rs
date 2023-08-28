@@ -4,14 +4,21 @@ use rsync_core::s3::S3Opts;
 use rsync_core::utils::parse_ensure_end_slash;
 
 /// Garbage collect old & unused files in S3.
+///
+/// # GC Policy
+///
+/// 1. Keep at most `keep_live` live indices.
+/// 2. Remove all partial indices before the last live index.
+/// 3. Keep at most `keep_partial` partial indices after the last live index.
 #[derive(Parser)]
+#[clap(verbatim_doc_comment)]
 pub struct Opts {
-    /// How many live revisions to keep.
+    /// How many live revisions to keep. Check `--help` for details.
     #[clap(short, long, default_value = "3")]
-    pub keep: u32,
-    /// How many partial revisions to keep.
+    pub keep: usize,
+    /// How many partial revisions to keep. Check `--help` for details.
     #[clap(short, long, default_value = "5")]
-    pub partial: u32,
+    pub partial: usize,
     /// S3 endpoint url.
     /// For specifying authentication, use environment variables:
     /// AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY

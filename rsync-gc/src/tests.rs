@@ -5,12 +5,11 @@ mod db_required {
     use sqlx::types::chrono::Utc;
     use sqlx::{Acquire, PgPool, Postgres};
 
+    use crate::pg::mark_stale;
     use rsync_core::pg::{
         change_revision_status, create_revision, ensure_repository, RevisionStatus,
     };
     use rsync_core::tests::generate_random_namespace;
-
-    use crate::pg::keep_last_n;
 
     async fn create_rev_live<'a>(
         namespace: &'a str,
@@ -95,33 +94,46 @@ WHERE repository in (SELECT id FROM repositories WHERE name = $1)
     }
 
     #[sqlx::test(migrations = "../tests/migrations")]
-    async fn must_keep_last_n(pool: PgPool) {
+    async fn must_mark_stale(pool: PgPool) {
         use RevisionStatus::*;
 
         let mut conn = pool.acquire().await.unwrap();
 
-        let namespace = generate_random_namespace();
-        ensure_repository(&namespace, &mut conn).await.unwrap();
-        let revs = create_by_plan(&[Live, Live, Stale, Live, Partial], &namespace, &pool).await;
-        keep_last_n(&namespace, 2, Live, &pool).await.unwrap();
-        assert_revs(
-            &revs,
-            &[Stale, Live, Stale, Live, Partial],
-            &namespace,
-            &pool,
-        )
-        .await;
-
-        let namespace = generate_random_namespace();
-        ensure_repository(&namespace, &pool).await.unwrap();
-        let revs = create_by_plan(&[Partial, Live, Stale, Live, Partial], &namespace, &pool).await;
-        keep_last_n(&namespace, 1, Partial, &pool).await.unwrap();
-        assert_revs(
-            &revs,
-            &[Stale, Live, Stale, Live, Partial],
-            &namespace,
-            &pool,
-        )
-        .await;
+        for (before, live, partial, expected) in [
+            // 1. must remove all live indices other than the last `keep_live` live indices
+            (
+                &[Live, Live, Stale, Live, Partial][..],
+                2,
+                usize::MAX,
+                &[Stale, Live, Stale, Live, Partial][..],
+            ),
+            // 2. must remove all partial indices before the last live index
+            (
+                &[Partial, Live, Partial, Live, Stale, Live, Partial][..],
+                usize::MAX,
+                usize::MAX,
+                &[Stale, Live, Stale, Live, Stale, Live, Partial][..],
+            ),
+            // 3. must remove all partial indices after the last live index other than the last `keep_partial` partial indices
+            (
+                &[Partial, Live, Partial, Partial, Partial][..],
+                usize::MAX,
+                2,
+                &[Stale, Live, Stale, Partial, Partial][..],
+            ),
+            // 4. must run 2 after 1
+            (
+                &[Live, Live, Stale, Live, Partial][..],
+                0,
+                usize::MAX,
+                &[Stale, Stale, Stale, Stale, Stale][..],
+            ),
+        ] {
+            let namespace = generate_random_namespace();
+            ensure_repository(&namespace, &mut conn).await.unwrap();
+            let revs = create_by_plan(before, &namespace, &pool).await;
+            mark_stale(&namespace, live, partial, &pool).await.unwrap();
+            assert_revs(&revs, expected, &namespace, &pool).await;
+        }
     }
 }

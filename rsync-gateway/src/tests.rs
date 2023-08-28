@@ -1,7 +1,7 @@
 use actix_web::cookie::time;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use proptest::prop_compose;
-use proptest::strategy::{Just, Strategy};
+use proptest::strategy::Just;
 use time::util::days_in_year;
 
 prop_compose! {

@@ -12,13 +12,12 @@ use eyre::Result;
 use sqlx::PgPool;
 use tracing::info;
 
-use rsync_core::pg::RevisionStatus;
 use rsync_core::pg_lock::PgLock;
 use rsync_core::s3::{build_operator, S3Opts};
 use rsync_core::utils::{init_color_eyre, init_logger};
 
 use crate::opts::Opts;
-use crate::pg::{hashes_to_remove, keep_last_n, remove_revisions};
+use crate::pg::{hashes_to_remove, mark_stale, remove_revisions};
 use crate::s3::bulk_delete_objs;
 
 mod opts;
@@ -48,8 +47,7 @@ async fn main() -> Result<()> {
     let op = build_operator(&S3Opts::from(&opts))?;
 
     info!("marking stale indices...");
-    let mut stale_revs = keep_last_n(namespace, opts.keep, RevisionStatus::Live, &*pool).await?;
-    stale_revs.extend(keep_last_n(namespace, opts.partial, RevisionStatus::Stale, &*pool).await?);
+    let stale_revs = mark_stale(namespace, opts.keep, opts.partial, &*pool).await?;
     info!(?stale_revs, "marked as stale");
 
     info!("querying stale objects...");
