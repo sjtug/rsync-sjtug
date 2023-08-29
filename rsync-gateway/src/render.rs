@@ -189,6 +189,7 @@ pub fn render_revision_stats(
     prefix: &str,
     locale: &str,
 ) -> impl Responder {
+    let last_rev = entries.last().map_or(0, |entry| entry.revision);
     let rendered = RevisionStatsTemplate {
         entries: entries.iter(),
         prefix,
@@ -197,6 +198,7 @@ pub fn render_revision_stats(
             query_time,
             locale,
         },
+        last_rev,
         locale,
     }
     .render_once()

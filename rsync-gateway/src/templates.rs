@@ -127,6 +127,7 @@ where
     pub entries: I,
     pub prefix: &'a str,
     pub footer: T,
+    pub last_rev: i64,
     pub locale: &'a str,
 }
 

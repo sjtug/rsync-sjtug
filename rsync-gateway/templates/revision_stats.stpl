@@ -52,10 +52,21 @@
             </td>
             <td>
                 <% if *status == RevisionStatus::Partial { %>
-                <div class="d-flex flex-row align-items-center">
-                    <div class="spinner-grow spinner-grow-sm mx-1 text-info"></div>
-                    <div class="d-none d-sm-block text-info"><%= t!("revisions.syncing", locale = locale) %></div>
-                </div>
+                    <% if *revision == last_rev { %>
+                    <div class="d-flex flex-row align-items-center">
+                        <div class="spinner-grow spinner-grow-sm mx-1 text-info"></div>
+                        <div class="d-none d-sm-block text-info"><%= t!("revisions.syncing", locale = locale) %></div>
+                    </div>
+                    <% } else { %>
+                    <div class="d-flex flex-row align-items-center">
+                        <div class="mx-1 text-warning">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M7.005 3.1a1 1 0 1 1 1.99 0l-.388 6.35a.61.61 0 0 1-1.214 0L7.005 3.1ZM7 12a1 1 0 1 1 2 0 1 1 0 0 1-2 0Z"/>
+                            </svg>
+                        </div>
+                        <div class="d-none d-sm-block text-warning"><%= t!("revisions.interrupted", locale = locale) %></div>
+                    </div>
+                    <% } %>
                 <% } else { %>
                 <div class="d-flex flex-row align-items-center">
                     <div class="mx-1 text-success">
