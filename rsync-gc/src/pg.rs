@@ -1,7 +1,6 @@
 use eyre::Result;
 use itertools::{Either, Itertools};
 use sqlx::{Acquire, Postgres};
-use std::cmp;
 use tracing::instrument;
 
 use rsync_core::pg::RevisionStatus;
@@ -25,9 +24,9 @@ pub async fn hashes_to_remove<'a>(
 /// Return the indices that are set to stale.
 ///
 /// # Policy
-/// 1. Keep at most `keep_live` live indices.
-/// 2. Remove all partial indices before the last live index.
-/// 3. Keep at most `keep_partial` partial indices after the last live index.
+/// 1. Remove all partial indices before the last live index.
+/// 2. Keep at most `keep_partial` partial indices after the last live index.
+/// 3. Keep at most `keep_live` live indices.
 ///
 /// # Errors
 /// Returns error if db query fails.
@@ -64,8 +63,7 @@ pub async fn mark_stale<'a>(
     .fetch_all(&mut *tx)
     .await?;
 
-    // Keep at most `keep_live` live indices.
-    let (mut live_revs, partial_revs): (Vec<_>, Vec<_>) = revisions
+    let (live_revs, partial_revs): (Vec<_>, Vec<_>) = revisions
         .into_iter()
         .filter(|r| r.status == RevisionStatus::Live || r.status == RevisionStatus::Partial)
         .partition_map(|r| {
@@ -76,12 +74,14 @@ pub async fn mark_stale<'a>(
             }
         });
 
-    let mut to_stale_revs = live_revs.split_off(cmp::min(keep_live, live_revs.len()));
-
     // Remove all partial indices before the last live index.
-    // All partial indices are removed if there's no live index after step 1.
-    let last_live_rev = live_revs.first().copied().unwrap_or(i32::MAX);
-    to_stale_revs.extend(partial_revs.iter().filter(|r| **r < last_live_rev));
+    // No partial index will be removed if there's no live index.
+    let last_live_rev = live_revs.first().copied().unwrap_or_default();
+    let mut to_stale_revs: Vec<_> = partial_revs
+        .iter()
+        .filter(|r| **r < last_live_rev)
+        .copied()
+        .collect();
 
     // Keep at most `keep_partial` partial indices after the last live index.
     to_stale_revs.extend(
@@ -90,6 +90,9 @@ pub async fn mark_stale<'a>(
             .filter(|r| **r >= last_live_rev)
             .skip(keep_partial),
     );
+
+    // Keep at most `keep_live` live indices.
+    to_stale_revs.extend(live_revs.into_iter().skip(keep_live));
 
     // Set the indices to stale.
     sqlx::query!(

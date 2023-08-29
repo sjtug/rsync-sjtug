@@ -7,9 +7,9 @@ use rsync_core::utils::parse_ensure_end_slash;
 ///
 /// # GC Policy
 ///
-/// 1. Keep at most `keep_live` live indices.
-/// 2. Remove all partial indices before the last live index.
-/// 3. Keep at most `keep_partial` partial indices after the last live index.
+/// 1. Remove all partial indices before the last live index.
+/// 2. Keep at most `keep_partial` partial indices after the last live index.
+/// 3. Keep at most `keep_live` live indices.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct Opts {

@@ -100,33 +100,40 @@ WHERE repository in (SELECT id FROM repositories WHERE name = $1)
         let mut conn = pool.acquire().await.unwrap();
 
         for (before, live, partial, expected) in [
-            // 1. must remove all live indices other than the last `keep_live` live indices
-            (
-                &[Live, Live, Stale, Live, Partial][..],
-                2,
-                usize::MAX,
-                &[Stale, Live, Stale, Live, Partial][..],
-            ),
-            // 2. must remove all partial indices before the last live index
+            // 1. must remove all partial indices before the last live index
             (
                 &[Partial, Live, Partial, Live, Stale, Live, Partial][..],
                 usize::MAX,
                 usize::MAX,
                 &[Stale, Live, Stale, Live, Stale, Live, Partial][..],
             ),
-            // 3. must remove all partial indices after the last live index other than the last `keep_partial` partial indices
+            // 2. must remove all partial indices after the last live index other than the last `keep_partial` partial indices
             (
                 &[Partial, Live, Partial, Partial, Partial][..],
                 usize::MAX,
                 2,
                 &[Stale, Live, Stale, Partial, Partial][..],
             ),
-            // 4. must run 2 after 1
+            // 3. must remove all live indices other than the last `keep_live` live indices
+            (
+                &[Live, Live, Stale, Live, Partial][..],
+                2,
+                usize::MAX,
+                &[Stale, Live, Stale, Live, Partial][..],
+            ),
+            // 4. must run 3 after 2
             (
                 &[Live, Live, Stale, Live, Partial][..],
                 0,
                 usize::MAX,
-                &[Stale, Stale, Stale, Stale, Stale][..],
+                &[Stale, Stale, Stale, Stale, Partial][..],
+            ),
+            // 5. must not remove partial when there's no live index
+            (
+                &[Partial, Stale, Partial, Partial][..],
+                usize::MAX,
+                usize::MAX,
+                &[Partial, Stale, Partial, Partial][..],
             ),
         ] {
             let namespace = generate_random_namespace();
