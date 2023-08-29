@@ -1,8 +1,10 @@
 <p class="small text-muted"><%- t!("footer.generated", locale = locale) %></p>
 <p class="small text-muted">
-    <a href="<%- href_str(root_href) | disp %>/_revisions"><%= t!("common.revision", locale = locale) %> <%= revision %></a>
-    <%= t!("comma", locale = locale)%>
-    <%- t!("footer.revision_and_last_update",
+    <a href="<%- href_str(root_href) | disp %>/_revisions"><%=
+        t!("common.revision", locale = locale)
+        %> <%= revision %></a><%=
+    t!("comma", locale = locale)
+    %><%- t!("footer.revision_and_last_update",
         locale = locale,
         last_update = datetime(generated_at),
         query_time = duration(query_time)
