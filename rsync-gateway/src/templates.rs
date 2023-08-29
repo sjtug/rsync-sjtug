@@ -12,6 +12,7 @@ use sqlx::types::BigDecimal;
 
 use rsync_core::pg::RevisionStatus;
 use rsync_core::utils::PATH_ASCII_SET;
+use rust_i18n::t;
 
 use crate::path_resolve::ListingEntry;
 use crate::pg::RevisionStat;
@@ -96,6 +97,7 @@ where
     pub entries: I,
     pub navbar: N,
     pub footer: T,
+    pub locale: &'a str,
 }
 
 /// Template for the error page.
@@ -111,6 +113,7 @@ where
     pub detail: String,
     pub navbar: N,
     pub footer: T,
+    pub locale: &'a str,
 }
 
 /// Template for revision stats page.
@@ -124,13 +127,15 @@ where
     pub entries: I,
     pub prefix: &'a str,
     pub footer: T,
+    pub locale: &'a str,
 }
 
 #[derive(TemplateOnce)]
 #[template(path = "footer.stpl", rm_whitespace = true)]
-pub struct FooterTemplate {
+pub struct FooterTemplate<'a> {
     pub generated_at: DateTime<Utc>,
     pub query_time: Duration,
+    pub locale: &'a str,
 }
 
 #[derive(TemplateOnce)]
@@ -140,6 +145,7 @@ pub struct FooterRevisionTemplate<'a> {
     pub root_href: &'a str,
     pub generated_at: DateTime<Utc>,
     pub query_time: Duration,
+    pub locale: &'a str,
 }
 
 #[derive(TemplateOnce)]

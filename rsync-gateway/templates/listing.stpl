@@ -16,9 +16,9 @@
     <table class="table table-sm table-borderless">
         <thead>
         <tr>
-            <th class="w-50" scope="col">名称</th>
-            <th class="w-25 text-right" scope="col">大小</th>
-            <th class="text-right d-none d-sm-block" scope="col">修改时间</th>
+            <th class="w-50" scope="col"><%= t!("listing.name", locale = locale) %></th>
+            <th class="w-25 text-right" scope="col"><%= t!("listing.size", locale = locale) %></th>
+            <th class="text-right d-none d-sm-block" scope="col"><%= t!("listing.modified", locale = locale) %></th>
         </tr>
         </thead>
         <tbody>

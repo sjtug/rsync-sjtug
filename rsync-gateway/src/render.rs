@@ -28,6 +28,7 @@ impl Resolved {
         revision: i32,
         generated_at: DateTime<Utc>,
         query_time: Duration,
+        locale: &str,
     ) -> impl Responder {
         match self {
             Self::Directory { entries } => {
@@ -65,7 +66,9 @@ impl Resolved {
                         root_href: &root_href,
                         generated_at,
                         query_time,
+                        locale,
                     },
+                    locale,
                 }
                 .render_once()
                 .expect("render must not fail");
@@ -95,7 +98,9 @@ impl Resolved {
                         root_href: &root_href,
                         generated_at,
                         query_time,
+                        locale,
                     },
+                    locale,
                 }
                 .render_once()
                 .expect("render must not fail");
@@ -120,6 +125,7 @@ pub fn render_internal_error(
     query_time: Duration,
     err: &eyre::Report,
     request_id: &Uuid,
+    locale: &str,
 ) -> impl Responder {
     error!(?err, "internal error");
 
@@ -145,7 +151,9 @@ pub fn render_internal_error(
                 root_href: &root_href,
                 generated_at,
                 query_time,
+                locale,
             },
+            locale,
         }
         .render_once()
         .expect("render must not fail")
@@ -160,7 +168,9 @@ pub fn render_internal_error(
             footer: FooterTemplate {
                 generated_at,
                 query_time,
+                locale,
             },
+            locale,
         }
         .render_once()
         .expect("render must not fail")
@@ -177,6 +187,7 @@ pub fn render_revision_stats(
     generated_at: DateTime<Utc>,
     query_time: Duration,
     prefix: &str,
+    locale: &str,
 ) -> impl Responder {
     let rendered = RevisionStatsTemplate {
         entries: entries.iter(),
@@ -184,7 +195,9 @@ pub fn render_revision_stats(
         footer: FooterTemplate {
             generated_at,
             query_time,
+            locale,
         },
+        locale,
     }
     .render_once()
     .expect("render must not fail");
@@ -391,6 +404,7 @@ mod tests {
                 revision,
                 generated_at,
                 query_time,
+                "en",
             )
             .respond_to(&req);
         let Ok(body) = to_bytes(resp.into_body()).await else {
@@ -421,6 +435,7 @@ mod tests {
             query_time,
             &eyre!(err),
             &request_id,
+            "en",
         )
         .respond_to(&req);
 
@@ -442,8 +457,8 @@ mod tests {
         prop_assume!(!prefix.is_empty() && !prefix.starts_with('/'));
 
         let req = TestRequest::get().to_http_request();
-        let resp =
-            render_revision_stats(&entries, generated_at, query_time, &prefix).respond_to(&req);
+        let resp = render_revision_stats(&entries, generated_at, query_time, &prefix, "en")
+            .respond_to(&req);
 
         let Ok(body) = to_bytes(resp.into_body()).await else {
             panic!("must to bytes");

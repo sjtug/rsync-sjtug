@@ -17,24 +17,28 @@
         <div class="container">
             <p class="text-muted text-uppercase font-italic m-0"><%= code %> <%= code_msg %></p>
             <h1 class="display-4 mb-3">
-                <% if code == 404 { %>
-                哎呀！文件不见了
-                <% } else { %>
-                喔唷！崩溃啦
-                <% } %>
+                <%= if code == 404 {
+                    t!("error.404.title", locale = locale)
+                } else {
+                    t!("error.500.title", locale = locale)
+                } %>
             </h1>
             <p class="text-muted lead mb-1">
-                <% if code == 404 { %>
-                这真是让人尴尬，我们找不到您想要的文件。
-                <% } else { %>
-                这真是让人尴尬，我们的服务器好像出了点问题。
-                <% } %>
+                <%= if code == 404 {
+                    t!("error.404.description", locale = locale)
+                } else {
+                    t!("error.500.description", locale = locale)
+                } %>
             </p>
-            <p class="text-muted lead pb-3">如果您认为这是不正常的，请前往
-                <a href="https://github.com/sjtug/mirror-requests">sjtug/mirror-requests</a>
-                贴上详细错误向我们报告</p>
+            <p class="text-muted lead pb-3">
+                <p class="text-muted lead pb-3">
+                    <%- t!("error.report",
+                        locale = locale,
+                        link = r#"<a href="https://github.com/sjtug/mirror-requests">sjtug/mirror-requests</a>"#
+                    ) %>
+                </p>
             <a aria-controls="whatHappened" aria-expanded="false" class="small" data-toggle="collapse"
-               href="#whatHappened">怎么会事呢？(详细错误)</a>
+               href="#whatHappened"><%= t!("error.details", locale = locale) %></a>
             <div class="collapse py-2" id="whatHappened">
                 <pre><code><%= detail %></code></pre>
             </div>

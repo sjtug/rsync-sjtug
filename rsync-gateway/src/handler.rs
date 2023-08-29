@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
-use actix_web::web::Data;
+use actix_web::http::header::{AcceptLanguage, Preference};
+use actix_web::web::{Data, Header};
 use actix_web::{Either, HttpRequest, Responder};
 use chrono::Utc;
 use eyre::eyre;
@@ -17,6 +18,21 @@ use crate::pg::{revision_stats, Revision};
 use crate::render::{render_internal_error, render_revision_stats};
 use crate::state::State;
 
+fn select_locale(accept_language: &AcceptLanguage) -> &'static str {
+    let accepted = accept_language.ranked();
+    let available = rust_i18n::available_locales!();
+    accepted
+        .iter()
+        .find_map(|lang| match lang {
+            Preference::Any => Some(available[0]),
+            Preference::Specific(l) => available
+                .iter()
+                .find(|al| **al == l.as_str() || **al == l.primary_language())
+                .copied(),
+        })
+        .unwrap_or(available[0])
+}
+
 /// Main handler.
 #[allow(clippy::too_many_arguments)]
 pub async fn main_handler(
@@ -28,6 +44,7 @@ pub async fn main_handler(
     cache: Data<NSCache>,
     request_id: RequestId,
     req: HttpRequest,
+    accepted_language: Header<AcceptLanguage>,
 ) -> impl Responder {
     let prefix = prefix.as_str();
     let full_path = req.path();
@@ -42,6 +59,8 @@ pub async fn main_handler(
         path.clone()
     };
 
+    let locale = select_locale(&accepted_language);
+
     let namespace = &endpoint.namespace;
     let s3_prefix = &endpoint.s3_prefix;
     let Some(Revision { revision, generated_at }) = state.revision() else {
@@ -53,6 +72,7 @@ pub async fn main_handler(
             Duration::default(),
             &eyre!("no revision available"),
             &request_id,
+            locale
         ));
     };
 
@@ -75,6 +95,7 @@ pub async fn main_handler(
                 query_time,
                 &e,
                 &request_id,
+                locale,
             ));
         }
     };
@@ -87,6 +108,7 @@ pub async fn main_handler(
         revision,
         generated_at,
         query_time,
+        locale,
     ))
 }
 
@@ -95,6 +117,7 @@ pub async fn rev_handler(
     prefix: Data<Prefix>,
     db: Data<PgPool>,
     request_id: RequestId,
+    accepted_language: Header<AcceptLanguage>,
 ) -> impl Responder {
     let prefix = prefix.as_str();
     let mut conn = db.acquire().await.unwrap();
@@ -106,8 +129,16 @@ pub async fn rev_handler(
 
     let elapsed = query_start.elapsed();
 
+    let locale = select_locale(&accepted_language);
+
     match try_stats {
-        Ok(stats) => Either::Left(render_revision_stats(&stats, Utc::now(), elapsed, prefix)),
+        Ok(stats) => Either::Left(render_revision_stats(
+            &stats,
+            Utc::now(),
+            elapsed,
+            prefix,
+            locale,
+        )),
         Err(e) => Either::Right(render_internal_error(
             b"_revisions",
             prefix,
@@ -116,6 +147,7 @@ pub async fn rev_handler(
             elapsed,
             &e,
             &request_id,
+            locale,
         )),
     }
 }

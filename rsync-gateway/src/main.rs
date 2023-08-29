@@ -39,6 +39,8 @@ mod templates;
 mod tests;
 mod utils;
 
+rust_i18n::i18n!();
+
 #[actix_web::main]
 pub async fn main() -> Result<()> {
     init_logger();

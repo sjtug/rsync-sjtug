@@ -16,12 +16,12 @@
     <table class="table table-sm table-borderless">
         <thead>
         <tr>
-            <th scope="col">修订</th>
-            <th scope="col">创建时间</th>
-            <th scope="col">耗时</th>
-            <th scope="col">文件数量</th>
-            <th scope="col">大小</th>
-            <th scope="col">状态</th>
+            <th scope="col"><%= t!("common.revision", locale = locale) %></th>
+            <th scope="col"><%= t!("revisions.created", locale = locale) %></th>
+            <th scope="col"><%= t!("revisions.elapsed", locale = locale) %></th>
+            <th scope="col"><%= t!("revisions.count", locale = locale) %></th>
+            <th scope="col"><%= t!("revisions.size", locale = locale) %></th>
+            <th scope="col"><%= t!("revisions.status", locale = locale) %></th>
         </tr>
         </thead>
         <tbody>
@@ -54,7 +54,7 @@
                 <% if *status == RevisionStatus::Partial { %>
                 <div class="d-flex flex-row align-items-center">
                     <div class="spinner-grow spinner-grow-sm mx-1 text-info"></div>
-                    <div class="d-none d-sm-block text-info">正在同步</div>
+                    <div class="d-none d-sm-block text-info"><%= t!("revisions.syncing", locale = locale) %></div>
                 </div>
                 <% } else { %>
                 <div class="d-flex flex-row align-items-center">
@@ -66,7 +66,7 @@
                                   clip-rule="evenodd"></path>
                         </svg>
                     </div>
-                    <div class="d-none d-sm-block text-success">同步完成</div>
+                    <div class="d-none d-sm-block text-success"><%= t!("revisions.synced", locale = locale) %></div>
                 </div>
                 <% } %>
             </td>
