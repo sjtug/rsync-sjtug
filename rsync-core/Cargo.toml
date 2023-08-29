@@ -25,7 +25,7 @@ metrics-tracing-context = { version = "0.14", optional = true }
 opendal = { version = "0.39", default-features = false, features = ["rustls", "services-s3", "layers-tracing"], optional = true }
 percent-encoding = { version = "2.2", optional = true }
 proptest = { version = "1.2", optional = true }
-proptest-derive = { version = "0.3", optional = true }
+proptest-derive = { version = "0.4", optional = true }
 rand = "0.8"
 redis = { git = "https://github.com/PhotonQuantum/redis-rs", features = ["aio", "tokio-comp"], optional = true }
 scan_fmt = { version = "0.2", optional = true }
