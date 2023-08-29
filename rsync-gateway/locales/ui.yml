@@ -72,6 +72,7 @@ revisions.count:
   en: Files
   zh-CN: 檔案數量
   zh-TW: 檔案數量
+  zh-HK: 檔案數量
 revisions.size:
   en: Size
   zh-CN: 大小
@@ -92,6 +93,11 @@ revisions.synced:
   zh-CN: 同步完成
   zh-TW: 同步完成
   zh-HK: 同步完成
+revisions.interrupted:
+  en: Interrupted
+  zh-CN: 同步中断
+  zh-TW: 同步中斷
+  zh-HK: 同步中斷
 
 common.revision:
   en: Revision
