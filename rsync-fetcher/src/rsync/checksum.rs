@@ -1,5 +1,3 @@
-use std::cmp::max;
-
 use eyre::Result;
 use md4::{Digest, Md4};
 use num::integer::Roots;
@@ -14,6 +12,7 @@ pub struct SumHead {
 }
 
 const BLOCK_SIZE: u64 = 700;
+const MAX_BLOCK_SIZE: u64 = 1 << 29;
 
 impl SumHead {
     pub fn sum_sizes_sqroot(len: u64) -> Self {
@@ -28,7 +27,7 @@ impl SumHead {
             // This won't overflow because sqrt of u64 must be much smaller than u64::MAX.
             let b = (b + 7) & !7;
 
-            max(b, BLOCK_SIZE)
+            b.clamp(BLOCK_SIZE, MAX_BLOCK_SIZE)
         };
 
         // TODO blocksum_bits = BLOCKSUM_EXP + 2*log2(file_len) - log2(block_len)
@@ -74,26 +73,24 @@ pub fn checksum_1(buf: &[u8]) -> u32 {
     let mut s1: u32 = 0;
     let mut s2: u32 = 0;
 
-    for chunk in buf.chunks(4) {
-        if chunk.len() == 4 {
-            s2 = s2.wrapping_add(
-                (s1.wrapping_add(sign_extend(chunk[0])).wrapping_mul(4))
-                    .wrapping_add(sign_extend(chunk[1]).wrapping_mul(3))
-                    .wrapping_add(sign_extend(chunk[2]).wrapping_mul(2))
-                    .wrapping_add(sign_extend(chunk[3])),
-            );
-            s1 = s1.wrapping_add(
-                sign_extend(chunk[0])
-                    .wrapping_add(sign_extend(chunk[1]))
-                    .wrapping_add(sign_extend(chunk[2]))
-                    .wrapping_add(sign_extend(chunk[3])),
-            );
-        } else {
-            for b in chunk.iter() {
-                s1 = s1.wrapping_add(sign_extend(*b));
-                s2 = s2.wrapping_add(s1);
-            }
-        }
+    let mut it = buf.chunks_exact(4);
+    for chunk in &mut it {
+        s2 = s2.wrapping_add(
+            (s1.wrapping_add(sign_extend(chunk[0])).wrapping_mul(4))
+                .wrapping_add(sign_extend(chunk[1]).wrapping_mul(3))
+                .wrapping_add(sign_extend(chunk[2]).wrapping_mul(2))
+                .wrapping_add(sign_extend(chunk[3])),
+        );
+        s1 = s1.wrapping_add(
+            sign_extend(chunk[0])
+                .wrapping_add(sign_extend(chunk[1]))
+                .wrapping_add(sign_extend(chunk[2]))
+                .wrapping_add(sign_extend(chunk[3])),
+        );
+    }
+    for b in it.remainder() {
+        s1 = s1.wrapping_add(sign_extend(*b));
+        s2 = s2.wrapping_add(s1);
     }
 
     (s1 & 0xffff) + (s2 << 16)
