@@ -72,7 +72,7 @@ impl Uploader {
             let UploadTask {
                 idx,
                 blake2b_hash,
-                file,
+                mut file,
             } = task;
 
             // Avoid repeatedly uploading the same file to address
@@ -89,7 +89,6 @@ impl Uploader {
                 // REMARK: If a file is soft/hard linked, users may see a content-disposition with a
                 // different filename instead of the one they expect.
                 // TODO since we no longer need static file path, we can use presign on the gateway.
-                let mut file = file.try_clone().await.expect("unable to dup file");
                 file.seek(SeekFrom::Start(0))
                     .await
                     .expect("unable to seek file");
