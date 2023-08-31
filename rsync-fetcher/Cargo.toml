@@ -5,6 +5,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+array-init = "2.1"
+arrayref = "0.3"
 async-trait = "0.1"
 base64 = "0.21"
 blake2 = "0.10"
@@ -21,6 +23,7 @@ futures = "0.3"
 indicatif = "0.17"
 itertools = "0.11"
 md4 = "0.10"
+multiversion = "0.7"
 num = "0.4"
 opendal = { version = "0.39", default-features = false }
 percent-encoding = "2.2"
@@ -37,4 +40,6 @@ url = "2.3"
 zeroize = { version = "1.6", features = ["derive"] }
 
 [dev-dependencies]
+proptest = "1.2"
 rsync-core = { path = "../rsync-core", features = ["tests"] }
+test-strategy = "0.3"

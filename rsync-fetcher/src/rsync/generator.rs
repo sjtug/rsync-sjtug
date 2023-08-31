@@ -1,7 +1,4 @@
-use std::cmp::min;
 use std::ffi::OsStr;
-use std::io;
-use std::io::Read;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
@@ -17,7 +14,7 @@ use tokio::sync::{mpsc, Semaphore};
 use tracing::{debug, info};
 
 use crate::plan::TransferItem;
-use crate::rsync::checksum::{checksum_1, checksum_2, SumHead};
+use crate::rsync::checksum::{checksum_payload, SumHead};
 use crate::rsync::file_list::FileEntry;
 use crate::rsync::progress_display::ProgressDisplay;
 use crate::utils::ignore_mode;
@@ -131,7 +128,6 @@ impl Generator {
         Ok(())
     }
 
-    #[allow(clippy::cast_sign_loss)] // block_len and checksum_count are always positive.
     async fn generate_and_send_sums(&mut self, file: File) -> Result<()> {
         let file_len = file.metadata().await?.size();
         let sum_head = SumHead::sum_sizes_sqroot(file_len);
@@ -141,33 +137,9 @@ impl Generator {
         let seed = self.seed;
 
         let sum_bytes = tokio::task::spawn_blocking(move || {
-            // Sqrt of usize can't be negative.
-            let mut buf = vec![0u8; sum_head.block_len as usize];
-            let mut remaining = file_len;
-
-            let mut buf_sum = Vec::with_capacity(sum_head.checksum_count as usize * 20);
-            for _ in 0..sum_head.checksum_count {
-                // Sqrt of usize must be in u32 range.
-                #[allow(clippy::cast_possible_truncation)]
-                let n1 = min(sum_head.block_len as u64, remaining) as usize;
-                let buf_slice = &mut buf[..n1];
-                file.read_exact(buf_slice)?;
-
-                let sum1 = checksum_1(buf_slice);
-                let sum2 = checksum_2(seed, buf_slice);
-                // The original implementation reads sum1 as i32, but casting it to i32 is a no-op anyway.
-                buf_sum.extend_from_slice(&sum1.to_le_bytes());
-                buf_sum.extend_from_slice(&sum2);
-
-                remaining -= n1 as u64;
-            }
-            debug_assert!(
-                buf_sum.len() <= sum_head.checksum_count as usize * 20,
-                "pre-allocated buffer is too small"
-            );
-            Ok::<_, io::Error>(buf_sum)
+            checksum_payload(sum_head, seed, &mut file, file_len)
         })
-        .await??;
+        .await?;
 
         self.write_all(&sum_bytes).await?;
 
