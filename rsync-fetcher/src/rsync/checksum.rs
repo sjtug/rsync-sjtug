@@ -138,6 +138,11 @@ fn checksum_payload_(
                 array_init::array_init(|_| vec![0u8; sum_head.block_len as usize + 4]);
 
             while block_remaining >= simd_impl.lanes() {
+                if file_remaining < sum_head.block_len as u64 * simd_impl.lanes() as u64 {
+                    // not enough data for simd
+                    break;
+                }
+
                 let mut datas: [&[u8]; md4_simd::simd::MAX_LANES] =
                     [&[]; md4_simd::simd::MAX_LANES];
                 for (idx, buf) in bufs[0..simd_impl.lanes()].iter_mut().enumerate() {
@@ -145,7 +150,7 @@ fn checksum_payload_(
 
                     // Sqrt of usize must be in u32 range.
                     #[allow(clippy::cast_possible_truncation)]
-                    let n1 = min(sum_head.block_len as u64, file_remaining) as usize;
+                    let n1 = sum_head.block_len as usize;
 
                     file.read_exact(&mut buf[..n1]).expect("IO error");
 
@@ -200,8 +205,8 @@ mod tests {
 
     use crate::rsync::checksum::{checksum_payload, checksum_payload_basic, SumHead};
 
-    #[proptest]
-    fn must_checksum_payload_basic_eq_simd(data: Vec<u8>) {
+    #[inline]
+    fn must_checksum_payload_basic_eq_simd_(data: Vec<u8>) -> (Vec<u8>, Vec<u8>) {
         let file_len = data.len() as u64;
 
         let mut f = tempfile().expect("tempfile");
@@ -213,6 +218,19 @@ mod tests {
         let chksum_simd = checksum_payload(sum_head, 0, &mut f, file_len);
         f.seek(SeekFrom::Start(0)).expect("seek");
         let chksum_basic = checksum_payload_basic(sum_head, 0, &mut f, file_len);
+        (chksum_simd, chksum_basic)
+    }
+
+    #[proptest]
+    fn must_checksum_payload_basic_eq_simd(data: Vec<u8>) {
+        let (chksum_simd, chksum_basic) = must_checksum_payload_basic_eq_simd_(data);
         prop_assert_eq!(chksum_simd, chksum_basic);
+    }
+
+    #[test]
+    fn checksum_payload_simd_regression_1() {
+        let data = vec![0u8; 11199];
+        let (chksum_simd, chksum_basic) = must_checksum_payload_basic_eq_simd_(data);
+        assert_eq!(chksum_simd, chksum_basic);
     }
 }
