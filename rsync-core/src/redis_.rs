@@ -439,7 +439,10 @@ pub async fn follow_symlink(
                 }
             }
             ComponentOwned::Normal(name) => {
-                let Some(entry): Option<Metadata> = conn.hget(redis_index, cwd.join(&name).as_os_str().as_bytes()).await? else {
+                let Some(entry): Option<Metadata> = conn
+                    .hget(redis_index, cwd.join(&name).as_os_str().as_bytes())
+                    .await?
+                else {
                     warn!(?cwd, ?name, "broken symlink");
                     return Ok(None);
                 };
@@ -506,7 +509,8 @@ async fn follow_direct_link(
 
                 let Some(new_meta) = conn
                     .hget(redis_index, new_loc.as_os_str().as_bytes())
-                    .await? else {
+                    .await?
+                else {
                     break None;
                 };
 

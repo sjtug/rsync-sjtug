@@ -169,10 +169,10 @@ pub async fn realpath<'a>(
                 let next = resolved.join(name);
                 let Some(entry) =
                     entry_of_path(revision, next.as_os_str().as_bytes(), &mut *conn).await?
-                    else {
-                        explain!(resolved, next_comp, "not found, abort", explain);
-                        giveup!(Broken, path, explain);
-                    };
+                else {
+                    explain!(resolved, next_comp, "not found, abort", explain);
+                    giveup!(Broken, path, explain);
+                };
                 match entry {
                     Entry::Regular { blake2b } => {
                         if !left.is_empty() {

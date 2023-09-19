@@ -85,7 +85,9 @@ impl Downloader {
         debug!("basis generator started");
 
         for item in transfer_plan {
-            let Some(blake2b_hash) = &item.blake2b else { continue; };
+            let Some(blake2b_hash) = &item.blake2b else {
+                continue;
+            };
 
             let entry = &self.file_list[item.idx as usize];
             if ignore_mode(entry.mode, None::<()>) {

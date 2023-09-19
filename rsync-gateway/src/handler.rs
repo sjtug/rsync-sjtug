@@ -63,7 +63,11 @@ pub async fn main_handler(
 
     let namespace = &endpoint.namespace;
     let s3_prefix = &endpoint.s3_prefix;
-    let Some(Revision { revision, generated_at }) = state.revision() else {
+    let Some(Revision {
+        revision,
+        generated_at,
+    }) = state.revision()
+    else {
         return Either::Left(render_internal_error(
             &req_path,
             prefix,
@@ -72,7 +76,7 @@ pub async fn main_handler(
             Duration::default(),
             &eyre!("no revision available"),
             &request_id,
-            locale
+            locale,
         ));
     };
 
