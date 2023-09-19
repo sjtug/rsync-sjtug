@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         name: Checkout
-      - uses: dtolnay/rust-toolchain@1.71.1
+      - uses: dtolnay/rust-toolchain@stable
         name: Setup Cargo Toolchain
         with:
           components: rustfmt, clippy
@@ -33,7 +33,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
       - name: Setup Cargo Toolchain
-        uses: dtolnay/rust-toolchain@1.71.1
+        uses: dtolnay/rust-toolchain@stable
       - name: Setup Java
         uses: actions/setup-java@v2
         with:
@@ -59,7 +59,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
       - name: Setup Cargo Toolchain
-        uses: dtolnay/rust-toolchain@1.71.1
+        uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         name: Rust Cache
       - name: Install nextest

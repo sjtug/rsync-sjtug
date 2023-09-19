@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Setup Cargo Toolchain
-        uses: dtolnay/rust-toolchain@1.71.1
+        uses: dtolnay/rust-toolchain@stable
       - name: Setup Cross Toolchain
         if: matrix.cross
         uses: taiki-e/install-action@cross
