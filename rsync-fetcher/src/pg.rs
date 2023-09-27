@@ -208,7 +208,7 @@ mod tests {
                 (b"d/f", Some(6)),
                 (b"d/f/g", Some(7)),
             ];
-            for (filename, expected_parent) in expect_entries.iter() {
+            for (filename, expected_parent) in expect_entries {
                 let actual = sqlx::query!(
                     r#"
             SELECT parent FROM objects WHERE revision = $1 AND filename = $2

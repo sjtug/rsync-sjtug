@@ -1,3 +1,9 @@
+//! Rendering logic for the HTTP server.
+//!
+//! This module is responsible for rendering the resolved result into a HTTP response.
+//!
+//! TODO: too many arguments, consider grouping them into a struct.
+
 use std::iter;
 use std::time::Duration;
 
@@ -373,6 +379,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::arc_with_non_send_sync)] // macro generated code
     fn resolved_non_regular_strategy() -> impl Strategy<Value = Resolved> {
         prop_oneof![
             Vec::<ListingEntry>::arbitrary().prop_map(|entries| Resolved::Directory { entries }),

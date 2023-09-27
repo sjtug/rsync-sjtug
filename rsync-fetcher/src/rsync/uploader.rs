@@ -132,20 +132,18 @@ impl Uploader {
                 let encoded_name = percent_encoding::percent_encode(filename, ATTR_CHAR);
                 format!("attachment; filename=\"{encoded_name}\"; filename*=UTF-8''{encoded_name}")
             });
-            let file_size = target_file.metadata().await?.len();
 
             let mut writer = content_disposition
                 .map_or_else(
-                    || self.s3.writer_with(&key).content_length(file_size),
+                    || self.s3.writer_with(&key),
                     |content_disposition| {
                         self.s3
                             .writer_with(&key)
-                            .content_length(file_size)
                             .content_disposition(&content_disposition)
                     },
                 )
                 .await?;
-            writer.copy(file_size, target_file.compat()).await?;
+            writer.copy(target_file.compat()).await?;
             writer.close().await?;
         }
         Ok(())

@@ -7,14 +7,14 @@ use std::time::Instant;
 use eyre::{bail, Report, Result};
 use futures::future::BoxFuture;
 use futures::TryStreamExt;
-use rsync_core::utils::AbortJoinHandle;
 use scopeguard::defer;
 use serde::Deserialize;
 use sqlx::postgres::PgListener;
 use sqlx::PgPool;
 use tokio::sync::RwLock;
-
 use tracing::{debug, error};
+
+use rsync_core::utils::AbortJoinHandle;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RevisionsChangeEvent {
@@ -93,6 +93,7 @@ impl RevisionsChangeListenerInner {
         let mut conn = PgListener::connect_with(pool).await?;
         conn.listen("revisions_change").await?;
         let stream = conn.into_stream();
+        #[allow(clippy::significant_drop_tightening)] // false positive
         stream
             .map_err(Report::from)
             .try_for_each_concurrent(None, |notification| async move {

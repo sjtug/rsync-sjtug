@@ -25,7 +25,7 @@ itertools = "0.11"
 md4 = "0.10"
 multiversion = "0.7"
 num = "0.4"
-opendal = { version = "0.39", default-features = false }
+opendal = { version = "0.40", default-features = false }
 percent-encoding = "2.2"
 rsync-core = { path = "../rsync-core", features = ["s3", "percent-encoding", "pg"] }
 scan_fmt = "0.2"

@@ -19,7 +19,7 @@ prop_compose! {
         let date = NaiveDate::from_yo_opt(year, u32::from(ord)).expect("valid date");
         let time = NaiveTime::from_num_seconds_from_midnight_opt(secs, nano).expect("valid time");
         let dt = NaiveDateTime::new(date, time);
-        DateTime::from_utc(dt, Utc)
+        DateTime::from_naive_utc_and_offset(dt, Utc)
     }
 }
 
@@ -91,12 +91,11 @@ mod db_required {
         type BlockingWriter = ();
         type Pager = ();
         type BlockingPager = ();
-        type Appender = ();
 
         fn info(&self) -> AccessorInfo {
             let mut am = AccessorInfo::default();
             am.set_scheme(MOCK_PRESIGN_SCHEME)
-                .set_capability(Capability {
+                .set_native_capability(Capability {
                     presign: true,
                     presign_write: true,
                     ..Default::default()

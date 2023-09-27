@@ -132,7 +132,7 @@ impl NSCacheInner {
         let started = Instant::now();
 
         // Fast path: already exists in L1 cache
-        if let Some(resolved) = self.l1.get(key) {
+        if let Some(resolved) = self.l1.get(key).await {
             let elapsed = started.elapsed();
             histogram!(HISTOGRAM_L1_QUERY_TIME, elapsed.as_millis() as f64);
             increment_counter!(COUNTER_L1_HIT);
@@ -141,7 +141,7 @@ impl NSCacheInner {
 
         // Now there might be multiple threads trying to get_or_insert the same key.
         // We'll deal with this later. No calculation done yet.
-        let init = self.l2.get(key).map_or_else(
+        let init = self.l2.get(key).await.map_or_else(
             || {
                 increment_counter!(COUNTER_MISS);
                 init.map_ok(|resolved| {
@@ -324,9 +324,9 @@ impl Expiry<Vec<u8>, Arc<MaybeCompressed>> for ExpiryPolicy {
 mod tests {
     #![allow(clippy::explicit_deref_methods)]
 
-    use bytesize::ByteSize;
     use std::future::ready;
 
+    use bytesize::ByteSize;
     use eyre::eyre;
     use proptest::strategy::{Just, Strategy};
     use proptest::{prop_assert_eq, prop_assume, prop_oneof};
