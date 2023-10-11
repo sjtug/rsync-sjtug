@@ -7,6 +7,7 @@ use tracing::{info, instrument};
 use rsync_core::pg::INSERT_CHUNK_SIZE;
 
 use crate::rsync::file_list::FileEntry;
+use crate::utils::namespace_as_table;
 
 #[instrument(skip(db))]
 pub async fn create_fl_table<'a>(
@@ -20,21 +21,27 @@ pub async fn create_fl_table<'a>(
     // 1. Fix this connection and pass it around. Quite verbose.
     // 2. Make it short-lived. No need to query it later because we have file_list in memory.
     // If we switch to temp table, we don't need namespacing any more.
+
+    // Make sure the namespace is a valid table name.
+    let ns_table = namespace_as_table(namespace);
+
     let mut txn = db.begin().await?;
-    sqlx::query(&format!("DROP TABLE IF EXISTS {namespace}_rsync_filelist"))
+    sqlx::query(&format!("DROP TABLE IF EXISTS {ns_table}_fl"))
         .execute(&mut *txn)
         .await?;
     sqlx::query(
         &include_str!("../../sqls/create_fl_table.sql")
-            .replace("rsync_filelist", &format!("{namespace}_rsync_filelist")),
+            .replace("rsync_filelist", &format!("{ns_table}_fl")),
     )
     .execute(&mut *txn)
     .await?;
-    sqlx::query(&format!("CREATE INDEX {namespace}_rsync_filelist_filename_mode_idx ON {namespace}_rsync_filelist (filename, mode)"))
-        .execute(&mut *txn)
-        .await?;
     sqlx::query(&format!(
-        "CREATE INDEX {namespace}_rsync_filelist_mode_idx ON {namespace}_rsync_filelist (mode)"
+        "CREATE INDEX {ns_table}_fl_nm_idx ON {ns_table}_fl (filename, mode)"
+    ))
+    .execute(&mut *txn)
+    .await?;
+    sqlx::query(&format!(
+        "CREATE INDEX {ns_table}_fl_m_idx ON {ns_table}_fl (mode)"
     ))
     .execute(&mut *txn)
     .await?;
@@ -47,8 +54,11 @@ pub async fn drop_fl_table<'a>(
     namespace: &str,
     db: impl Acquire<'a, Database = Postgres>,
 ) -> Result<()> {
+    // Make sure the namespace is a valid table name.
+    let ns_table = namespace_as_table(namespace);
+
     let mut conn = db.acquire().await?;
-    sqlx::query(&format!("DROP TABLE IF EXISTS {namespace}_rsync_filelist"))
+    sqlx::query(&format!("DROP TABLE IF EXISTS {ns_table}_fl"))
         .execute(&mut *conn)
         .await?;
     Ok(())
@@ -60,6 +70,9 @@ pub async fn insert_file_list_to_db<'a>(
     file_list: &[FileEntry],
     db: impl Acquire<'a, Database = Postgres>,
 ) -> Result<()> {
+    // Make sure the namespace is a valid table name.
+    let ns_table = namespace_as_table(namespace);
+
     // TODO doubled memory usage, can be optimised if OOM
     let (mut names, mut lens, mut mtimes, mut modes, mut targets, mut ids) =
         (vec![], vec![], vec![], vec![], vec![], vec![]);
@@ -94,7 +107,7 @@ pub async fn insert_file_list_to_db<'a>(
     )) {
         let result = sqlx::query(
             &include_str!("../../sqls/insert_filelist.sql")
-                .replace("rsync_filelist", &format!("{namespace}_rsync_filelist")),
+                .replace("rsync_filelist", &format!("{ns_table}_fl")),
         )
         .bind(ns)
         .bind(ls)
@@ -107,7 +120,7 @@ pub async fn insert_file_list_to_db<'a>(
         affected += result.rows_affected();
     }
 
-    sqlx::query(&format!("ANALYZE {namespace}_rsync_filelist"))
+    sqlx::query(&format!("ANALYZE {ns_table}_fl"))
         .execute(&mut *txn)
         .await?;
     txn.commit().await?;

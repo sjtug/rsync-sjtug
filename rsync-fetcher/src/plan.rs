@@ -4,6 +4,7 @@
 //! 1. No need to use partial stale to handle stale files caused by previous partial transfer, because we will mark those revisions as STALE.
 //! 2. All previous live revisions are considered, not just the latest one.
 
+use crate::utils::namespace_as_table;
 use eyre::Result;
 use sqlx::postgres::PgRow;
 use sqlx::{Acquire, Error, FromRow, Postgres, Row};
@@ -66,9 +67,12 @@ async fn diff_changed_or_remote_only<'a>(
     namespace: &str,
     db: impl Acquire<'a, Database = Postgres>,
 ) -> Result<Vec<TransferItem>> {
+    // Make sure the namespace is a valid table name.
+    let ns_table = namespace_as_table(namespace);
+
     Ok(sqlx::query_as(
         &include_str!("../../sqls/diff_changed_or_remote_only.sql")
-            .replace("rsync_filelist", &format!("{namespace}_rsync_filelist")),
+            .replace("rsync_filelist", &format!("{ns_table}_fl")),
     )
     .bind(namespace)
     .fetch_all(&mut *db.acquire().await?)
@@ -89,9 +93,12 @@ async fn diff_unchanged_and_copy<'a>(
     target_revision: i32,
     db: impl Acquire<'a, Database = Postgres>,
 ) -> Result<u64> {
+    // Make sure the namespace is a valid table name.
+    let ns_table = namespace_as_table(namespace);
+
     let result = sqlx::query(
         &include_str!("../../sqls/diff_unchanged_and_copy.sql")
-            .replace("rsync_filelist", &format!("{namespace}_rsync_filelist")),
+            .replace("rsync_filelist", &format!("{ns_table}_fl")),
     )
     .bind(namespace)
     .bind(target_revision)
@@ -113,9 +120,12 @@ async fn copy_directories<'a>(
     target_revision: i32,
     db: impl Acquire<'a, Database = Postgres>,
 ) -> Result<u64> {
+    // Make sure the namespace is a valid table name.
+    let ns_table = namespace_as_table(namespace);
+
     let result = sqlx::query(
         &include_str!("../../sqls/copy_directories.sql")
-            .replace("rsync_filelist", &format!("{namespace}_rsync_filelist")),
+            .replace("rsync_filelist", &format!("{ns_table}_fl")),
     )
     .bind(target_revision)
     .execute(&mut *db.acquire().await?)
@@ -136,9 +146,12 @@ async fn copy_symlinks<'a>(
     target_revision: i32,
     db: impl Acquire<'a, Database = Postgres>,
 ) -> Result<u64> {
+    // Make sure the namespace is a valid table name.
+    let ns_table = namespace_as_table(namespace);
+
     let result = sqlx::query(
         &include_str!("../../sqls/copy_symlinks.sql")
-            .replace("rsync_filelist", &format!("{namespace}_rsync_filelist")),
+            .replace("rsync_filelist", &format!("{ns_table}_fl")),
     )
     .bind(target_revision)
     .execute(&mut *db.acquire().await?)

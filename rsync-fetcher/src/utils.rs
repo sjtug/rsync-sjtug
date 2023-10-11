@@ -7,6 +7,8 @@ use digest::consts::U20;
 use digest::Digest;
 use tracing::warn;
 
+use rsync_core::utils::ToHex;
+
 use crate::plan::TransferItem;
 use crate::rsync::file_list::FileEntry;
 
@@ -115,4 +117,9 @@ where
     E2: Into<eyre::Report> + Send + Sync + 'static,
 {
     t.map_err(Into::into)?.map_err(Into::into)
+}
+
+/// Clean namespace name as a valid SQL table name.
+pub fn namespace_as_table(namespace: &str) -> String {
+    format!("h{:x}", hash(namespace.as_bytes()).as_hex())
 }
