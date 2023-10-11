@@ -11,7 +11,7 @@ pub fn generate_random_namespace() -> String {
         .expect("time goes backwards")
         .as_secs();
     let random = rand::random::<u64>();
-    format!("test_{timestamp}_{random}")
+    format!("test_{timestamp}_{random}_!@#$%^&*()-=+")
 }
 
 pub async fn insert_to_revision<'a>(
