@@ -23,6 +23,8 @@ use crate::consts::UPLOAD_CONN;
 use crate::rsync::file_list::FileEntry;
 use crate::rsync::progress_display::ProgressDisplay;
 
+const UPLOAD_CHUNK_SIZE: usize = 10 * 1024 * 1024;
+
 pub struct Uploader {
     rx: flume::Receiver<UploadTask>,
     file_list: Arc<Vec<FileEntry>>,
@@ -135,10 +137,11 @@ impl Uploader {
 
             let mut writer = content_disposition
                 .map_or_else(
-                    || self.s3.writer_with(&key),
+                    || self.s3.writer_with(&key).buffer(UPLOAD_CHUNK_SIZE),
                     |content_disposition| {
                         self.s3
                             .writer_with(&key)
+                            .buffer(UPLOAD_CHUNK_SIZE)
                             .content_disposition(&content_disposition)
                     },
                 )
