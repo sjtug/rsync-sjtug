@@ -4,6 +4,7 @@
     clippy::future_not_send
 )]
 
+pub mod logging;
 pub mod metadata;
 #[cfg(feature = "pg")]
 pub mod pg;

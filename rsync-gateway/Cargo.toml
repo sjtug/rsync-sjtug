@@ -31,7 +31,7 @@ moka = { version = "0.12", features = ["future"] }
 opendal = { version = "0.40", default-features = false, features = ["layers-metrics"] }
 percent-encoding = "2.2"
 rkyv = "0.7"
-rsync-core = { path = "../rsync-core", features = ["percent-encoding", "pg", "s3", "metrics-tracing-context"] }
+rsync-core = { path = "../rsync-core", features = ["percent-encoding", "pg", "s3", "metrics-tracing-context", "serde", "doku"] }
 rust-i18n = "2.2"
 sailfish = { version = "0.8", default-features = false, features = ["derive", "perf-inline"] }
 scopeguard = "1.1"

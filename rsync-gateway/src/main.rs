@@ -16,8 +16,9 @@ use sqlx::PgPool;
 use tracing::{error, info, warn};
 use tracing_actix_web::TracingLogger;
 
+use rsync_core::logging::{init_color_eyre, init_logger};
+use rsync_core::logging::{LogFormat, LogTarget};
 use rsync_core::pg_lock::PgLock;
-use rsync_core::utils::{init_color_eyre, init_logger};
 
 use crate::app::{configure, default_op_builder};
 use crate::metrics::init_metrics;
@@ -43,12 +44,18 @@ rust_i18n::i18n!();
 
 #[actix_web::main]
 pub async fn main() -> Result<()> {
-    init_logger();
     init_color_eyre()?;
+    let mut logger_handle = init_logger(LogTarget::Stderr, LogFormat::Human);
 
     let opts = Opts::parse();
     if opts.generate_config {
-        println!("{}", patch_generated_config(doku::to_toml::<Config>()));
+        println!(
+            "{}",
+            patch_generated_config(doku::to_toml_fmt::<Config>(&doku::toml::Formatting {
+                enums_style: doku::toml::EnumsStyle::Commented,
+                ..Default::default()
+            }))
+        );
         return Ok(());
     }
 
@@ -56,6 +63,7 @@ pub async fn main() -> Result<()> {
 
     drop(dotenvy::dotenv());
     let cfg = load_config(&opts.config)?;
+    logger_handle.set_target_format(cfg.log.target.clone(), cfg.log.format);
     validate_config(&cfg)?;
 
     info!(?cfg, "Loaded config");

@@ -12,6 +12,8 @@ use line_span::LineSpans;
 use serde::{Deserialize, Deserializer, Serialize};
 use tracing::warn;
 
+use rsync_core::logging::{LogFormat, LogTarget};
+
 #[derive(Parser)]
 pub struct Opts {
     /// Config file path.
@@ -28,6 +30,9 @@ pub struct Config {
     /// Bind address.
     #[doku(example = r#"127.0.0.1:8080", "[::1]:8080"#)]
     pub bind: Vec<String>,
+    /// Log options.
+    pub log: LogOpts,
+    /// Log format.
     /// Interval to update metadata. (seconds)
     ///
     /// Note that normally metadata update can be triggered on demand.
@@ -55,6 +60,15 @@ pub struct Config {
     pub endpoints: BTreeMap</* http prefix */ String, Endpoint>,
 }
 
+/// Log options.
+#[derive(Debug, Clone, Serialize, Deserialize, Document)]
+pub struct LogOpts {
+    /// Log target.
+    pub target: LogTarget,
+    /// Log format.
+    pub format: LogFormat,
+}
+
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, Document)]
 pub struct CacheOpts {
     /// L1 cache size.
@@ -69,6 +83,10 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             bind: vec!["127.0.0.1:8080".into(), "[::1]:8080".into()],
+            log: LogOpts {
+                target: LogTarget::Stderr,
+                format: LogFormat::Human,
+            },
             update_interval: 300,
             cache: CacheOpts {
                 l1_size: ByteSize::mb(128),

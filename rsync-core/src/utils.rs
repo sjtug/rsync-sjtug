@@ -1,5 +1,4 @@
 use std::convert::Infallible;
-use std::env;
 use std::fmt::LowerHex;
 use std::future::Future;
 use std::ops::Deref;
@@ -11,12 +10,6 @@ use percent_encoding::AsciiSet;
 #[cfg(feature = "percent-encoding")]
 use percent_encoding::NON_ALPHANUMERIC;
 use tokio::task::JoinHandle;
-#[cfg(feature = "tests")]
-use tracing::level_filters::LevelFilter;
-use tracing_error::ErrorLayer;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
 #[cfg(feature = "percent-encoding")]
 use url_escape::COMPONENT;
 
@@ -39,49 +32,6 @@ pub const ATTR_CHAR: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'`')
     .remove(b'|')
     .remove(b'~');
-
-pub fn init_logger() {
-    let builder = tracing_subscriber::Registry::default()
-        .with(EnvFilter::from_default_env())
-        .with(ErrorLayer::default())
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr));
-    #[cfg(feature = "metrics-tracing-context")]
-    {
-        builder
-            .with(metrics_tracing_context::MetricsLayer::new())
-            .init();
-    }
-    #[cfg(not(feature = "metrics-tracing-context"))]
-    {
-        builder.init();
-    }
-}
-
-#[cfg(feature = "tests")]
-pub fn test_init_logger() {
-    drop(
-        tracing_subscriber::Registry::default()
-            .with(LevelFilter::DEBUG)
-            .with(ErrorLayer::default())
-            .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
-            .try_init(),
-    );
-}
-
-/// Initialize color-eyre error handling, with `NO_COLOR` support.
-///
-/// # Errors
-/// Returns an error if `color-eyre` has already been initialized.
-pub fn init_color_eyre() -> eyre::Result<()> {
-    if env::var("NO_COLOR").is_ok() {
-        color_eyre::config::HookBuilder::new()
-            .theme(color_eyre::config::Theme::new())
-            .install()?;
-    } else {
-        color_eyre::install()?;
-    }
-    Ok(())
-}
 
 pub trait ToHex {
     fn as_hex(&self) -> HexWrapper<'_>;

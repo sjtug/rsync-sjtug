@@ -25,7 +25,10 @@ prop_compose! {
 
 #[test]
 fn must_generate_example_config() {
-    let generated = patch_generated_config(doku::to_toml::<Config>());
+    let generated = patch_generated_config(doku::to_toml_fmt::<Config>(&doku::toml::Formatting {
+        enums_style: doku::toml::EnumsStyle::Commented,
+        ..Default::default()
+    }));
     toml::from_str::<Value>(&generated).expect("generated config must be valid");
 }
 
@@ -46,15 +49,16 @@ mod db_required {
     use sqlx::PgPool;
     use tracing_actix_web::TracingLogger;
 
+    use rsync_core::logging::{test_init_logger, LogFormat, LogTarget};
     use rsync_core::metadata::{MetaExtra, Metadata};
     use rsync_core::pg::{
         change_revision_status, create_revision, ensure_repository, RevisionStatus,
     };
     use rsync_core::tests::{generate_random_namespace, insert_to_revision};
-    use rsync_core::utils::{test_init_logger, ToHex};
+    use rsync_core::utils::ToHex;
 
     use crate::app::configure;
-    use crate::opts::{CacheOpts, Config, Endpoint};
+    use crate::opts::{CacheOpts, Config, Endpoint, LogOpts};
 
     const MOCK_PRESIGN_SCHEME: Scheme = Scheme::Custom("mock-presign");
 
@@ -234,6 +238,10 @@ mod db_required {
 
         let opts = Config {
             bind: vec![],
+            log: LogOpts {
+                target: LogTarget::Stderr,
+                format: LogFormat::Human,
+            },
             update_interval: 999,
             s3_url: String::new(),
             s3_region: String::new(),

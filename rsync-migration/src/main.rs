@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 
-use rsync_core::utils::{init_color_eyre, init_logger};
+use rsync_core::logging::{init_color_eyre, init_logger};
+use rsync_core::logging::{LogFormat, LogTarget};
 
 use crate::redis_to_pg::redis_to_pg;
 use crate::schema_migration::schema_migration;
@@ -31,7 +32,7 @@ pub enum Command {
 #[allow(clippy::too_many_lines)]
 async fn main() -> eyre::Result<()> {
     init_color_eyre()?;
-    init_logger();
+    init_logger(LogTarget::Stderr, LogFormat::Human);
     drop(dotenvy::dotenv());
 
     let args = Args::parse();

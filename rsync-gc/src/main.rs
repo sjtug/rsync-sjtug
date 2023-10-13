@@ -12,9 +12,10 @@ use eyre::Result;
 use sqlx::PgPool;
 use tracing::info;
 
+use rsync_core::logging::{init_color_eyre, init_logger};
+use rsync_core::logging::{LogFormat, LogTarget};
 use rsync_core::pg_lock::PgLock;
 use rsync_core::s3::{build_operator, S3Opts};
-use rsync_core::utils::{init_color_eyre, init_logger};
 
 use crate::opts::Opts;
 use crate::pg::{hashes_to_remove, mark_stale, remove_revisions};
@@ -28,8 +29,8 @@ mod tests;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logger();
     init_color_eyre()?;
+    init_logger(LogTarget::Stderr, LogFormat::Human);
 
     drop(dotenvy::dotenv());
     let opts = Opts::parse();
