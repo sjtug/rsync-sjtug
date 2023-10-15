@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use stubborn_io::{ReconnectOptions, StubbornTcpStream};
 use tokio::io::AsyncWriteExt;
-use tokio::sync::mpsc;
-use tracing::{error, info};
+use tokio::sync::broadcast;
+use tracing::{error, info, warn};
 use tracing_subscriber::fmt::MakeWriter;
 
 use crate::utils::AbortJoinHandle;
@@ -13,27 +13,47 @@ const MAX_BACKLOG: usize = 1024;
 
 #[derive(Clone)]
 pub struct TcpWriter {
-    tx: mpsc::Sender<Vec<u8>>,
+    tx: broadcast::Sender<Vec<u8>>,
     _handler: Arc<AbortJoinHandle<()>>,
 }
 
 impl TcpWriter {
     pub fn connect(addr: String) -> Self {
-        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(MAX_BACKLOG);
+        let (tx, mut rx) = broadcast::channel::<Vec<u8>>(MAX_BACKLOG);
 
         let handler = AbortJoinHandle::new(tokio::spawn(async move {
             let mut stream = StubbornTcpStream::connect_with_options(
-                addr,
+                addr.clone(),
                 ReconnectOptions::new().with_exit_if_first_connect_fails(false),
             )
             .await
             .expect("never gonna give you up");
-            info!(force_stderr = true, "connected to TCP endpoint");
+            info!(force_stderr = true, addr, "connected to TCP endpoint");
 
-            while let Some(buf) = rx.recv().await {
-                if let Err(err) = stream.write_all(&buf).await {
-                    // We do not use tracing here because we are in middle of a logging operation.
-                    error!(force_stderr=true, %err, "error writing to TCP stream");
+            loop {
+                match rx.recv().await {
+                    Ok(buf) => {
+                        if let Err(err) = stream.write_all(&buf).await {
+                            error!(force_stderr = true, %err, "error writing to TCP stream");
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(missed)) => {
+                        // The sink is lagging behind, and we have missed some messages.
+                        // This prints to stderr immediately.
+                        warn!(
+                            force_stderr = true,
+                            missed, "missed messages due to sink lag"
+                        );
+                        // And this prints to the sink when it catches up.
+                        warn!(
+                            missed,
+                            "missed messages due to sink lag, sink is now caught up"
+                        );
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        // The sender is dropped, we can exit.
+                        break;
+                    }
                 }
             }
         }));
@@ -49,7 +69,7 @@ impl io::Write for TcpWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let size = buf.len();
         self.tx
-            .try_send(buf.to_vec())
+            .send(buf.to_vec())
             .map_err(|e| io::Error::new(io::ErrorKind::BrokenPipe, e))?;
         Ok(size)
     }
