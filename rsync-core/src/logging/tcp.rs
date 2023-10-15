@@ -4,6 +4,7 @@ use std::sync::Arc;
 use stubborn_io::{ReconnectOptions, StubbornTcpStream};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
+use tracing::{error, info};
 use tracing_subscriber::fmt::MakeWriter;
 
 use crate::utils::AbortJoinHandle;
@@ -27,10 +28,12 @@ impl TcpWriter {
             )
             .await
             .expect("never gonna give you up");
+            info!(force_stderr = true, "connected to TCP endpoint");
+
             while let Some(buf) = rx.recv().await {
-                if let Err(e) = stream.write_all(&buf).await {
+                if let Err(err) = stream.write_all(&buf).await {
                     // We do not use tracing here because we are in middle of a logging operation.
-                    eprintln!("Error writing to TCP stream: {e}");
+                    error!(force_stderr=true, %err, "error writing to TCP stream");
                 }
             }
         }));
