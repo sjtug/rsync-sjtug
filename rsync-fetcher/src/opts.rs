@@ -1,7 +1,8 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use clap::{ArgAction, Parser};
+use clap::{ArgAction, CommandFactory, FromArgMatches, Parser};
+use itertools::Itertools;
 use url::Url;
 
 use rsync_core::s3::S3Opts;
@@ -74,4 +75,52 @@ impl From<&Opts> for RsyncOpts {
         }
         Self { filters }
     }
+}
+
+fn format_error(e: clap::Error) -> clap::Error {
+    let mut cmd = Opts::command();
+    e.format(&mut cmd)
+}
+
+pub fn parse() -> (Opts, RsyncOpts) {
+    let mut matches = Opts::command().get_matches();
+
+    let exclude_indices = matches
+        .indices_of("exclude")
+        .map_or(vec![], Iterator::collect);
+    let include_indices = matches
+        .indices_of("include")
+        .map_or(vec![], Iterator::collect);
+
+    let res = Opts::from_arg_matches_mut(&mut matches).map_err(format_error);
+
+    let opts = match res {
+        Ok(s) => s,
+        Err(e) => {
+            // Since this is more of a development-time error, we aren't doing as fancy of a quit
+            // as `get_matches`
+            e.exit()
+        }
+    };
+
+    let exclude_patterns = opts
+        .exclude
+        .clone()
+        .into_iter()
+        .map(Rule::Exclude)
+        .zip(exclude_indices);
+    let include_patterns = opts
+        .include
+        .clone()
+        .into_iter()
+        .map(Rule::Include)
+        .zip(include_indices);
+
+    let filters = exclude_patterns
+        .chain(include_patterns)
+        .sorted_by_key(|(_, i)| *i)
+        .map(|(p, _)| p)
+        .collect();
+
+    (opts, RsyncOpts { filters })
 }

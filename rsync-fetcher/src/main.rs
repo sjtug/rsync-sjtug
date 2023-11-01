@@ -10,7 +10,6 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use clap::Parser;
 use eyre::Result;
 use futures::FutureExt;
 use sqlx::PgPool;
@@ -25,7 +24,6 @@ use rsync_core::pg::{
 use rsync_core::pg_lock::PgLock;
 use rsync_core::s3::{build_operator, S3Opts};
 
-use crate::opts::{Opts, RsyncOpts};
 use crate::pg::{
     analyse_objects, create_fl_table, drop_fl_table, insert_file_list_to_db, update_parent_ids,
 };
@@ -48,8 +46,7 @@ async fn main() -> Result<()> {
     init_logger(LogTarget::Stderr, LogFormat::Human);
 
     drop(dotenvy::dotenv());
-    let opts = Opts::parse();
-    let rsync_opts = RsyncOpts::from(&opts);
+    let (opts, rsync_opts) = opts::parse();
     let s3_opts = S3Opts::from(&opts);
     let namespace = &opts.namespace;
 
