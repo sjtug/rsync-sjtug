@@ -108,7 +108,7 @@ async fn main() -> Result<()> {
     info!(?stat, "transfer plan stat.");
     progress.set_length(stat.total_bytes);
     let transfer_items = Arc::new(transfer_items);
-    let (_, mut generator, mut receiver, _) = tokio::try_join!(
+    let ((), mut generator, mut receiver, ()) = tokio::try_join!(
         tokio::spawn({
             let transfer_items = transfer_items.clone();
             async move { downloader.tasks(&transfer_items).await }

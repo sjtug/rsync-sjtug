@@ -197,6 +197,7 @@ fn checksum_payload_(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::ignored_unit_patterns)]
     use std::io::{Seek, SeekFrom, Write};
 
     use proptest::prop_assert_eq;

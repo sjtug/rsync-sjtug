@@ -250,7 +250,7 @@ fn req_path_to_root_href(prefix: &str, req_path: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::explicit_deref_methods)]
+    #![allow(clippy::explicit_deref_methods, clippy::ignored_unit_patterns)]
 
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;

@@ -126,8 +126,7 @@ impl<T: AsyncBufRead + Unpin> AsyncRead for EnvelopeRead<T> {
                         match b4 {
                             7 => (),
                             t => {
-                                let mut errbuf = vec![];
-                                errbuf.resize(self.frame_remaining, 0);
+                                let errbuf = vec![0; self.frame_remaining];
                                 self.pending_error = Some((t, errbuf));
                                 return self.poll_err(ctx, buf);
                             }

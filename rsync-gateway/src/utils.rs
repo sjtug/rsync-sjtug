@@ -72,7 +72,7 @@ impl<T> ArchiveWith<T> for SkipRkyv {
     type Archived = ();
     type Resolver = ();
 
-    unsafe fn resolve_with(_: &T, _: usize, _: Self::Resolver, _: *mut Self::Archived) {
+    unsafe fn resolve_with(_: &T, _: usize, (): Self::Resolver, _: *mut Self::Archived) {
         panic!("Attempted to resolve a field explicitly skipped")
     }
 }

@@ -31,7 +31,7 @@ pub async fn bulk_delete_objs(op: &Operator, opts: &Opts, hashes: &[[u8; 20]]) -
             .iter()
             .map(|hash| format!("{prefix}{:x}", hash.as_hex()))
             .collect();
-        op.remove(keys).map_ok(|_| pb.inc(chunk.len() as u64))
+        op.remove(keys).map_ok(|()| pb.inc(chunk.len() as u64))
     }))
     .buffer_unordered(DELETE_CONN)
     .try_collect::<()>()

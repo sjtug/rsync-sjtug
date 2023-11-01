@@ -322,7 +322,7 @@ impl Expiry<Vec<u8>, Arc<MaybeCompressed>> for ExpiryPolicy {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::explicit_deref_methods)]
+    #![allow(clippy::explicit_deref_methods, clippy::ignored_unit_patterns)]
 
     use std::future::ready;
 
