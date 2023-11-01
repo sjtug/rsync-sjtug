@@ -11,7 +11,7 @@ eyre = "0.6"
 futures = "0.3"
 indicatif = "0.17"
 itertools = "0.11"
-opendal = { version = "0.40", default-features = false }
+opendal = { version = "0.41", default-features = false }
 rsync-core = { path = "../rsync-core", features = ["s3", "pg"] }
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "macros"] }
 tokio = { version = "1.25", features = ["full"] }
