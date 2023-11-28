@@ -10,14 +10,14 @@ dotenvy = "0.15"
 eyre = "0.6"
 futures = "0.3"
 indicatif = "0.17"
-itertools = "0.11"
-opendal = { version = "0.41", default-features = false }
+itertools = "0.12"
+opendal = { version = "0.42", default-features = false }
 rsync-core = { path = "../rsync-core", features = ["s3", "pg"] }
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "macros"] }
 tokio = { version = "1.25", features = ["full"] }
 tracing = "0.1"
 
 [dev-dependencies]
-itertools = "0.11"
+itertools = "0.12"
 rstest = "0.18"
 rsync-core = { path = "../rsync-core", features = ["tests"] }

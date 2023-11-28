@@ -21,11 +21,11 @@ eyre = "0.6"
 flume = "0.11"
 futures = "0.3"
 indicatif = "0.17"
-itertools = "0.11"
+itertools = "0.12"
 md4 = "0.10"
 multiversion = "0.7"
 num = "0.4"
-opendal = { version = "0.41", default-features = false }
+opendal = { version = "0.42", default-features = false }
 percent-encoding = "2.2"
 rsync-core = { path = "../rsync-core", features = ["s3", "percent-encoding", "pg"] }
 scan_fmt = "0.2"
