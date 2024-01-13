@@ -25,7 +25,7 @@ use crate::templates::{
 };
 
 impl Resolved {
-    /// Render the resolved result to a HTTP response.
+    /// Render the resolved result to an HTTP response.
     pub fn to_responder(
         &self,
         req_path: &[u8],

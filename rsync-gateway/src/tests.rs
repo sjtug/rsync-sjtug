@@ -256,6 +256,7 @@ mod db_required {
                     s3_bucket: String::new(),
                     s3_prefix: namespace.clone(),
                     namespace: namespace.clone(),
+                    list_hidden: false
                 },
             },
         };

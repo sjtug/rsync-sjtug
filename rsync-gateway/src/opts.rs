@@ -116,6 +116,10 @@ pub struct Endpoint {
     /// But it must be unique across all endpoints.
     #[doku(example = "fedora")]
     pub namespace: String,
+    /// Whether to list hidden files.
+    #[serde(default)]
+    #[doku(example = "false")]
+    pub list_hidden: bool,
 }
 
 fn de_trim_end_slash<'de, D>(de: D) -> Result<String, D::Error>

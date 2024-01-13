@@ -1,6 +1,9 @@
+use std::future::ready;
+
 use bstr::ByteSlice;
 use chrono::{DateTime, Utc};
 use eyre::Result;
+use futures::TryStreamExt;
 use sqlx::postgres::types::PgInterval;
 use sqlx::types::BigDecimal;
 use sqlx::{Acquire, Postgres};
@@ -164,13 +167,14 @@ impl From<RawResolveEntry> for ListingEntry {
 pub async fn list_directory<'a>(
     path: &[u8],
     revision: i32,
+    list_hidden: bool,
     db: impl Acquire<'a, Database = Postgres>,
 ) -> Result<Vec<ListingEntry>> {
+    let executor = &mut *db.acquire().await?;
     Ok(if path.is_empty() {
         sqlx::query_file_as!(RawResolveEntry, "../sqls/list_root.sql", revision)
-            .map(Into::into)
-            .fetch_all(&mut *db.acquire().await?)
-            .await?
+            .map(ListingEntry::from)
+            .fetch(executor)
     } else {
         sqlx::query_file_as!(
             RawResolveEntry,
@@ -178,10 +182,18 @@ pub async fn list_directory<'a>(
             path,
             revision
         )
-        .map(Into::into)
-        .fetch_all(&mut *db.acquire().await?)
-        .await?
+        .map(ListingEntry::from)
+        .fetch(executor)
+    }
+    .try_filter(|entry| {
+        ready(if list_hidden {
+            true
+        } else {
+            !entry.filename.starts_with(b".")
+        })
     })
+    .try_collect()
+    .await?)
 }
 
 #[cfg(test)]

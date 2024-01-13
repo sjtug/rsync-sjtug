@@ -61,8 +61,12 @@ pub async fn main_handler(
 
     let locale = select_locale(&accepted_language);
 
-    let namespace = &endpoint.namespace;
-    let s3_prefix = &endpoint.s3_prefix;
+    let Endpoint {
+        namespace,
+        s3_prefix,
+        list_hidden,
+        ..
+    } = &**endpoint;
     let Some(Revision {
         revision,
         generated_at,
@@ -84,7 +88,16 @@ pub async fn main_handler(
     let resolved = match cache
         .get_or_insert(
             &path,
-            resolve(namespace, &path, revision, s3_prefix, &**db, &op).boxed_local(),
+            resolve(
+                namespace,
+                &path,
+                revision,
+                s3_prefix,
+                *list_hidden,
+                &**db,
+                &op,
+            )
+            .boxed_local(),
         )
         .await
     {

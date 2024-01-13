@@ -46,12 +46,13 @@ pub async fn resolve<'a>(
     path: &[u8],
     revision: i32,
     s3_prefix: &str,
+    list_hidden: bool,
     db: impl Acquire<'a, Database = Postgres> + Clone,
     op: &Operator,
 ) -> Result<Resolved> {
     Ok(match realpath(path, revision, db.clone()).await {
         Ok(Target::Directory(path)) => {
-            let resolved = resolve_listing(&path, revision, db).await?;
+            let resolved = resolve_listing(&path, revision, list_hidden, db).await?;
             increment_counter!(COUNTER_RESOLVED_LISTING);
             resolved
         }
@@ -93,9 +94,10 @@ pub async fn resolve<'a>(
 async fn resolve_listing<'a>(
     path: &[u8],
     revision: i32,
+    list_hidden: bool,
     db: impl Acquire<'a, Database = Postgres>,
 ) -> Result<Resolved> {
-    let mut entries = list_directory(path, revision, db).await?;
+    let mut entries = list_directory(path, revision, list_hidden, db).await?;
     entries.shrink_to_fit(); // shrink as much as we can to reduce cache memory usage
     Ok(Resolved::Directory { entries })
 }
