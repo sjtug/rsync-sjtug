@@ -1,6 +1,7 @@
 #![allow(clippy::cast_sign_loss)] // indices are unsigned
 
 use std::fmt::{Debug, Formatter};
+use std::io;
 use std::io::SeekFrom;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -8,7 +9,7 @@ use std::sync::Arc;
 use eyre::{bail, eyre, Result};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, TryStreamExt};
-use opendal::{ErrorKind, Operator};
+use opendal::Operator;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
@@ -133,11 +134,13 @@ impl Downloader {
                 .open(&basis_path)
                 .await?;
             let key = format!("{}{:x}", self.s3_prefix, entry.blake2b_hash.as_hex());
-            match self.s3.reader(&key).await {
-                Ok(mut rd) => {
-                    tokio::io::copy(&mut rd, &mut basis_file).await?;
-                }
-                Err(e) if e.kind() == ErrorKind::NotFound => {
+            match {
+                let mut rd = self.s3.reader(&key).await?;
+                tokio::io::copy(&mut rd, &mut basis_file).await?;
+                Ok::<_, io::Error>(())
+            } {
+                Ok(()) => {}
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
                     warn!(
                         ?entry,
                         "INCONSISTENCY: basis file exists in metadata but not present in S3. \
