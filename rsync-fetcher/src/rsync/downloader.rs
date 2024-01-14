@@ -134,11 +134,16 @@ impl Downloader {
                 .open(&basis_path)
                 .await?;
             let key = format!("{}{:x}", self.s3_prefix, entry.blake2b_hash.as_hex());
-            match {
-                let mut rd = self.s3.reader(&key).await?;
-                tokio::io::copy(&mut rd, &mut basis_file).await?;
-                Ok::<_, io::Error>(())
-            } {
+            let copy_result = {
+                let basis_mut = &mut basis_file;
+                async move {
+                    let mut rd = self.s3.reader(&key).await?;
+                    tokio::io::copy(&mut rd, basis_mut).await?;
+                    Ok::<_, io::Error>(())
+                }
+            }
+            .await;
+            match copy_result {
                 Ok(()) => {}
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {
                     warn!(
