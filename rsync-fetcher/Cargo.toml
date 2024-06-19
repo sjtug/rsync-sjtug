@@ -33,6 +33,7 @@ sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chron
 tap = "1.0"
 tempfile = "3.3"
 tokio = { version = "1.25", features = ["full"] }
+tokio-socks = "0.5"
 tokio-util = { version = "0.7", features = ["compat"] }
 tracing = "0.1"
 unix_mode = "0.1"
