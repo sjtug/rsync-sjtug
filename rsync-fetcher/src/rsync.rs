@@ -1,6 +1,8 @@
-use eyre::{Context, ContextCompat, Result};
+use eyre::{bail, Context, ContextCompat, Result};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio_socks::tcp::Socks5Stream;
+use tracing::info;
 use url::Url;
 
 use crate::rsync::downloader::Downloader;
@@ -36,19 +38,66 @@ pub struct TaskBuilders {
     pub progress: ProgressDisplay,
 }
 
+async fn connect_with_proxy(target: &str) -> Result<TcpStream> {
+    let proxy = std::env::var("SOCKS5_PROXY")
+        .ok()
+        .and_then(|s| (!s.is_empty()).then_some(s))
+        .or_else(|| {
+            std::env::var("socks5_proxy")
+                .ok()
+                .and_then(|s| (!s.is_empty()).then_some(s))
+        });
+
+    if let Some(proxy) = proxy {
+        let proxy = Url::parse(&proxy).context("invalid proxy URL")?;
+        if proxy.scheme().to_lowercase() != "socks5" {
+            bail!("unsupported proxy scheme: {}", proxy.scheme());
+        }
+        let proxy_addr = proxy.host_str().context("missing proxy host")?;
+        let proxy_port = proxy.port().unwrap_or(1080);
+        let proxy_username = proxy.username();
+        let proxy_password = proxy.password().unwrap_or_default();
+
+        let stream = if proxy_username.is_empty() {
+            info!("connecting to {} via SOCKS5 proxy {}", target, proxy);
+            Socks5Stream::connect((proxy_addr, proxy_port), target)
+                .await
+                .context("proxy or rsync server refused connection. Are they running?")?
+        } else {
+            info!(
+                "connecting to {} via SOCKS5 proxy {} as {}",
+                target, proxy, proxy_username
+            );
+            Socks5Stream::connect_with_password(
+                (proxy_addr, proxy_port),
+                target,
+                proxy_username,
+                proxy_password,
+            )
+            .await
+            .context("proxy or rsync server refused connection. Are they running?")?
+        };
+
+        Ok(stream.into_inner())
+    } else {
+        TcpStream::connect(target)
+            .await
+            .context("rsync server refused connection. Is it running?")
+    }
+}
+
 pub async fn start_handshake(url: &Url) -> Result<HandshakeConn> {
     let port = url.port().unwrap_or(873);
     let path = url.path().trim_start_matches('/');
     let auth = Auth::from_url_and_env(url);
     let module = path.split('/').next().context("empty remote path")?;
 
-    let stream = TcpStream::connect(format!(
+    let stream = connect_with_proxy(&format!(
         "{}:{}",
         url.host_str().context("missing remote host")?,
         port
     ))
-    .await
-    .context("rsync server refused connection. Is it running?")?;
+    .await?;
 
     let mut handshake = HandshakeConn::new(stream);
     handshake.start_inband_exchange(module, path, auth).await?;
