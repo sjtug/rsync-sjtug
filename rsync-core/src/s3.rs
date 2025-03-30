@@ -15,8 +15,7 @@ pub struct S3Opts {
 /// # Errors
 /// Returns error if failed to build operator.
 pub fn build_operator(opts: &S3Opts) -> Result<Operator> {
-    let mut builder = S3::default();
-    builder
+    let builder = S3::default()
         .endpoint(&opts.url)
         .region(&opts.region)
         .bucket(&opts.bucket);

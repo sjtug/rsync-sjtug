@@ -13,7 +13,7 @@ use actix_web::{Either, HttpResponse, Responder};
 use bstr::ByteSlice;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
-use sailfish::TemplateOnce;
+use sailfish::TemplateSimple;
 use tracing::error;
 use uuid::Uuid;
 
@@ -26,6 +26,7 @@ use crate::templates::{
 
 impl Resolved {
     /// Render the resolved result to an HTTP response.
+    #[allow(clippy::too_many_arguments)]
     pub fn to_responder(
         &self,
         req_path: &[u8],
@@ -123,6 +124,7 @@ impl Resolved {
 /// Render the internal error into a HTTP response.
 ///
 /// Note that we do not expose internal errors to the client, and returns a trackable id instead.
+#[allow(clippy::too_many_arguments)]
 pub fn render_internal_error(
     req_path: &[u8],
     prefix: &str,
@@ -213,7 +215,7 @@ pub fn render_revision_stats(
     HttpResponse::Ok().content_type("text/html").body(rendered)
 }
 
-fn comps_to_navbar<'a>(comps: &'a [&'a str]) -> impl TemplateOnce + 'a {
+fn comps_to_navbar<'a>(comps: &'a [&'a str]) -> impl TemplateSimple + 'a {
     let count = comps.len();
     let components = comps[..count - 1]
         .iter()

@@ -5,19 +5,18 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.1", features = ["derive", "env"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 dotenvy = "0.15"
 eyre = "0.6"
 futures = "0.3"
 indicatif = "0.17"
-itertools = "0.12"
-opendal = { version = "0.42", default-features = false }
+itertools = "0.14"
+opendal = { version = "0.52", default-features = false }
 rsync-core = { path = "../rsync-core", features = ["s3", "pg"] }
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "macros"] }
-tokio = { version = "1.25", features = ["full"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "macros"] }
+tokio = { version = "1.44", features = ["full"] }
 tracing = "0.1"
 
 [dev-dependencies]
-itertools = "0.12"
-rstest = "0.18"
+itertools = "0.14"
 rsync-core = { path = "../rsync-core", features = ["tests"] }

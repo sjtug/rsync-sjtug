@@ -1,7 +1,6 @@
 use std::time::SystemTime;
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
 pub struct Metadata {
     pub len: u64,
     pub modify_time: SystemTime,
@@ -39,7 +38,6 @@ impl Metadata {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "bincode", derive(bincode::Encode, bincode::Decode))]
 pub enum MetaExtra {
     Symlink { target: Vec<u8> },
     Regular { blake2b_hash: [u8; 20] },

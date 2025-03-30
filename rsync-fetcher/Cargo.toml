@@ -8,39 +8,39 @@ edition = "2021"
 array-init = "2.1"
 arrayref = "0.3"
 async-trait = "0.1"
-base64 = "0.21"
+base64 = "0.22"
 blake2 = "0.10"
-bytesize = "1.1"
+bytesize = "2.0"
 chrono = "0.4"
-clap = { version = "4.1", features = ["derive", "env"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 clean-path = "0.2"
-dashmap = "5.5"
+dashmap = "6.1"
 digest = "0.10"
 dotenvy = "0.15"
 eyre = "0.6"
 flume = "0.11"
 futures = "0.3"
 indicatif = "0.17"
-itertools = "0.12"
+itertools = "0.14"
 md4 = "0.10"
-multiversion = "0.7"
+multiversion = "0.8"
 num = "0.4"
-opendal = { version = "0.42", default-features = false }
-percent-encoding = "2.2"
+opendal = { version = "0.52", default-features = false }
+percent-encoding = "2.3"
 rsync-core = { path = "../rsync-core", features = ["s3", "percent-encoding", "pg"] }
 scan_fmt = "0.2"
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "macros"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "chrono", "macros"] }
 tap = "1.0"
-tempfile = "3.3"
-tokio = { version = "1.25", features = ["full"] }
+tempfile = "3.19"
+tokio = { version = "1.44", features = ["full"] }
 tokio-socks = "0.5"
 tokio-util = { version = "0.7", features = ["compat"] }
 tracing = "0.1"
 unix_mode = "0.1"
-url = "2.3"
-zeroize = { version = "1.6", features = ["derive"] }
+url = "2.5"
+zeroize = { version = "1.8", features = ["derive"] }
 
 [dev-dependencies]
-proptest = "1.2"
+proptest = "1.6"
 rsync-core = { path = "../rsync-core", features = ["tests"] }
-test-strategy = "0.3"
+test-strategy = "0.4"

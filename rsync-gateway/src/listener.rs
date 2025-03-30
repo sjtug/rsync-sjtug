@@ -18,6 +18,7 @@ use rsync_core::utils::AbortJoinHandle;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RevisionsChangeEvent {
+    #[allow(dead_code)]
     pub revision: i32,
     pub repository: String,
 }

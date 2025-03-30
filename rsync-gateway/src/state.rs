@@ -22,7 +22,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(
+    pub const fn new(
         revision: Arc<ArcSwap<Option<Revision>>>,
         update_guard: Arc<AbortJoinHandle<()>>,
     ) -> Self {

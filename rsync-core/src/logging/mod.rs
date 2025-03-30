@@ -1,4 +1,4 @@
-use std::panic::PanicInfo;
+use std::panic::PanicHookInfo;
 use std::{env, io, panic};
 
 use tracing::{error, Subscriber};
@@ -15,7 +15,7 @@ mod either;
 mod opts;
 mod tcp;
 
-fn tracing_panic_hook(panic_info: &PanicInfo) {
+fn tracing_panic_hook(panic_info: &PanicHookInfo) {
     let payload = panic_info.payload();
 
     let payload = payload.downcast_ref::<&str>().map_or_else(

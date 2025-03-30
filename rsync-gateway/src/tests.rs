@@ -33,18 +33,19 @@ fn must_generate_example_config() {
 }
 
 mod db_required {
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
     use std::time::UNIX_EPOCH;
 
-    use actix_web::http::{Method, StatusCode, Uri};
+    use actix_web::http::{StatusCode};
     use actix_web::middleware::{NormalizePath, TrailingSlash};
     use actix_web::{test, App};
-    use async_trait::async_trait;
     use bytesize::ByteSize;
     use chrono::DateTime;
     use eyre::Result;
+    use http::{Method, Uri};
     use maplit::btreemap;
-    use opendal::raw::{Accessor, AccessorInfo, OpPresign, PresignedRequest, RpPresign};
+    use opendal::raw::{Access, AccessorInfo, OpPresign, PresignedRequest, RpPresign};
     use opendal::{Builder, Capability, ErrorKind, Operator, Scheme};
     use sqlx::PgPool;
     use tracing_actix_web::TracingLogger;
@@ -69,15 +70,11 @@ mod db_required {
 
     impl Builder for MockPresignBuilder {
         const SCHEME: Scheme = MOCK_PRESIGN_SCHEME;
-        type Accessor = MockPresignAccessor;
+        type Config = ();
 
-        fn from_map(_: HashMap<String, String>) -> Self {
-            unimplemented!()
-        }
-
-        fn build(&mut self) -> opendal::Result<Self::Accessor> {
+        fn build(self) -> opendal::Result<impl Access> {
             Ok(MockPresignAccessor {
-                path_to_presign: self.path_to_presign.clone(),
+                path_to_presign: self.path_to_presign,
             })
         }
     }
@@ -87,16 +84,18 @@ mod db_required {
         path_to_presign: BTreeMap<String, Uri>,
     }
 
-    #[async_trait]
-    impl Accessor for MockPresignAccessor {
+    impl Access for MockPresignAccessor {
         type Reader = ();
-        type BlockingReader = ();
         type Writer = ();
-        type BlockingWriter = ();
-        type Pager = ();
-        type BlockingPager = ();
+        type Lister = ();
+        type Deleter = ();
+        type BlockingReader = ();
 
-        fn info(&self) -> AccessorInfo {
+        type BlockingWriter = ();
+        type BlockingLister = ();
+        type BlockingDeleter = ();
+
+        fn info(&self) -> Arc<AccessorInfo> {
             let mut am = AccessorInfo::default();
             am.set_scheme(MOCK_PRESIGN_SCHEME)
                 .set_native_capability(Capability {
@@ -104,7 +103,7 @@ mod db_required {
                     presign_write: true,
                     ..Default::default()
                 });
-            am
+            Arc::new(am)
         }
         async fn presign(&self, path: &str, _: OpPresign) -> opendal::Result<RpPresign> {
             self.path_to_presign.get(path).map_or_else(

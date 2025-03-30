@@ -1,3 +1,5 @@
+#![allow(clippy::missing_panics_doc)]
+
 use crate::metadata::Metadata;
 use crate::pg::insert_task;
 use sqlx::{Acquire, Postgres};

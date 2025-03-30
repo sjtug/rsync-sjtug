@@ -6,7 +6,7 @@ use arc_swap::ArcSwap;
 use eyre::{eyre, Report, Result};
 use futures::{FutureExt, TryFutureExt};
 use get_size::GetSize;
-use metrics::{histogram, increment_counter};
+use metrics::{counter, histogram};
 use moka::future::Cache;
 use moka::Expiry;
 use rkyv::{Deserialize, Infallible};
@@ -28,8 +28,8 @@ pub const PRESIGN_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24);
 /// # Benefits
 /// 1. Less space usage than normal cache by compressing less frequently accessed paths
 /// 2. Less access time than storing certain patterns compressed in a single cache, ignoring
-/// their access patterns. Can probably reduce the risk of `DoS` attacks by deliberately requesting
-/// compressed paths very frequently.
+///    their access patterns. Can probably reduce the risk of `DoS` attacks by deliberately
+///    requesting compressed paths very frequently.
 pub struct NSCache {
     inner: ArcSwap<NSCacheInner>,
     sync_l2: bool, // do not return until L2 cache is synced
@@ -134,8 +134,8 @@ impl NSCacheInner {
         // Fast path: already exists in L1 cache
         if let Some(resolved) = self.l1.get(key).await {
             let elapsed = started.elapsed();
-            histogram!(HISTOGRAM_L1_QUERY_TIME, elapsed.as_millis() as f64);
-            increment_counter!(COUNTER_L1_HIT);
+            histogram!(HISTOGRAM_L1_QUERY_TIME).record(elapsed.as_millis() as f64);
+            counter!(COUNTER_L1_HIT).increment(1);
             return Ok(resolved);
         }
 
@@ -143,14 +143,14 @@ impl NSCacheInner {
         // We'll deal with this later. No calculation done yet.
         let init = self.l2.get(key).await.map_or_else(
             || {
-                increment_counter!(COUNTER_MISS);
+                counter!(COUNTER_MISS).increment(1);
                 init.map_ok(|resolved| {
                     let elapsed = started.elapsed();
-                    histogram!(HISTOGRAM_MISS_QUERY_TIME, elapsed.as_millis() as f64);
+                    histogram!(HISTOGRAM_MISS_QUERY_TIME).record(elapsed.as_millis() as f64);
                     let resolved_size = resolved.get_heap_size();
                     #[allow(clippy::cast_precision_loss)]
                     {
-                        histogram!(HISTOGRAM_RESOLVED_SIZE, resolved_size as f64);
+                        histogram!(HISTOGRAM_RESOLVED_SIZE).record(resolved_size as f64);
                     }
                     Arc::new(resolved)
                 })
@@ -159,7 +159,7 @@ impl NSCacheInner {
             |maybe_compressed| {
                 // Data still in L2 cache, but not in L1 cache.
                 // Then we need to decompress it to L1 cache.
-                increment_counter!(COUNTER_L2_HIT);
+                counter!(COUNTER_L2_HIT).increment(1);
                 let current_span = tracing::Span::current();
                 async move {
                     tokio::task::spawn_blocking(move || {
@@ -167,7 +167,7 @@ impl NSCacheInner {
                         let decompressed = maybe_compressed.decompress();
 
                         let elapsed = started.elapsed();
-                        histogram!(HISTOGRAM_L2_QUERY_TIME, elapsed.as_millis() as f64);
+                        histogram!(HISTOGRAM_L2_QUERY_TIME).record(elapsed.as_millis() as f64);
 
                         decompressed
                     })
@@ -234,7 +234,7 @@ impl MaybeCompressed {
     pub fn compress_from(resolved: Arc<Resolved>) -> Self {
         if matches!(&*resolved, Resolved::Regular { .. }) || resolved.get_heap_size() < 2048 {
             // Too small, not worth compressing.
-            increment_counter!(COUNTER_SMALL);
+            counter!(COUNTER_SMALL).increment(1);
             debug!(
                 size = resolved.get_heap_size(),
                 "too small, not worth compressing"
@@ -248,7 +248,7 @@ impl MaybeCompressed {
         compressed.shrink_to_fit();
         if compressed.len() > bytes.len() * 3 / 4 {
             // Not responding well to compression.
-            increment_counter!(COUNTER_POOR);
+            counter!(COUNTER_POOR).increment(1);
             debug!("not responding well to compression, give up");
             return Self::Uncompressed(resolved);
         }
@@ -256,7 +256,7 @@ impl MaybeCompressed {
         let ratio = 100 - compressed.len() * 100 / bytes.len();
         #[allow(clippy::cast_precision_loss)]
         {
-            histogram!(HISTOGRAM_COMPRESSION_RATIO, ratio as f64);
+            histogram!(HISTOGRAM_COMPRESSION_RATIO).record(ratio as f64);
         }
         Self::Compressed {
             data: compressed,

@@ -68,7 +68,7 @@ pub struct AbortJoinHandle<T>(JoinHandle<T>);
 
 impl<T> AbortJoinHandle<T> {
     #[must_use]
-    pub fn new(handle: JoinHandle<T>) -> Self {
+    pub const fn new(handle: JoinHandle<T>) -> Self {
         Self(handle)
     }
 }

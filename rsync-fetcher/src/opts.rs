@@ -17,7 +17,7 @@ pub struct Opts {
     pub src: Url,
     /// S3 endpoint url.
     /// For specifying authentication, use environment variables:
-    /// AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+    /// `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
     #[clap(long)]
     pub s3_url: String,
     /// S3 storage region.

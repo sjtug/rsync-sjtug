@@ -39,7 +39,7 @@ pub struct Receiver {
 impl Receiver {
     // We are fine with this because it's a private constructor.
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub const fn new(
         rx: EnvelopeRead<BufReader<OwnedReadHalf>>,
         upload_tx: flume::Sender<UploadTask>,
         file_list: Arc<Vec<FileEntry>>,

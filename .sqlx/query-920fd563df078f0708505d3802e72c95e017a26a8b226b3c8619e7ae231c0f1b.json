@@ -12,7 +12,7 @@
         "TimestamptzArray",
         {
           "Custom": {
-            "name": "_filetype",
+            "name": "filetype[]",
             "kind": {
               "Array": {
                 "Custom": {

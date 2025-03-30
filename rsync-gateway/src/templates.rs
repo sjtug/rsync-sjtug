@@ -6,14 +6,13 @@ use bigdecimal::ToPrimitive;
 use bytesize::ByteSize;
 use chrono::{DateTime, SecondsFormat, Utc};
 use sailfish::runtime::{Buffer, Render};
-use sailfish::TemplateOnce;
+use sailfish::TemplateSimple;
 use sqlx::postgres::types::PgInterval;
 use sqlx::types::BigDecimal;
 
 use rsync_core::pg::RevisionStatus;
 use rsync_core::utils::PATH_ASCII_SET;
 use rust_i18n::t;
-
 use crate::path_resolve::ListingEntry;
 use crate::pg::RevisionStat;
 
@@ -75,23 +74,23 @@ fn pg_interval(interval: &PgInterval) -> impl Display {
 }
 
 fn size(len: u64) -> impl Display {
-    ByteSize::b(len).to_string_as(true)
+    ByteSize::b(len).display().si()
 }
 
 fn size_big(len: &BigDecimal) -> impl Display {
     len.to_u64().map_or(Cow::Borrowed("LARGE"), |len| {
-        Cow::Owned(ByteSize::b(len).to_string_as(true))
+        Cow::Owned(ByteSize::b(len).display().si().to_string())
     })
 }
 
 /// Template for the listing page.
-#[derive(TemplateOnce)]
+#[derive(TemplateSimple)]
 #[template(path = "listing.stpl", rm_whitespace = true)]
 pub struct ListingTemplate<'a, I, T, N>
 where
     I: Iterator<Item = &'a ListingEntry>,
-    T: TemplateOnce,
-    N: TemplateOnce,
+    T: TemplateSimple,
+    N: TemplateSimple,
 {
     pub title: &'a str,
     pub entries: I,
@@ -101,12 +100,12 @@ where
 }
 
 /// Template for the error page.
-#[derive(TemplateOnce)]
+#[derive(TemplateSimple)]
 #[template(path = "error.stpl", rm_whitespace = true)]
 pub struct ErrorTemplate<'a, N, T>
 where
-    N: TemplateOnce,
-    T: TemplateOnce,
+    N: TemplateSimple,
+    T: TemplateSimple,
 {
     pub code: u16,
     pub code_msg: &'a str,
@@ -117,12 +116,12 @@ where
 }
 
 /// Template for revision stats page.
-#[derive(TemplateOnce)]
+#[derive(TemplateSimple)]
 #[template(path = "revision_stats.stpl", rm_whitespace = true)]
 pub struct RevisionStatsTemplate<'a, I, T>
 where
     I: Iterator<Item = &'a RevisionStat>,
-    T: TemplateOnce,
+    T: TemplateSimple,
 {
     pub entries: I,
     pub prefix: &'a str,
@@ -131,7 +130,7 @@ where
     pub locale: &'a str,
 }
 
-#[derive(TemplateOnce)]
+#[derive(TemplateSimple)]
 #[template(path = "footer.stpl", rm_whitespace = true)]
 pub struct FooterTemplate<'a> {
     pub generated_at: DateTime<Utc>,
@@ -139,7 +138,7 @@ pub struct FooterTemplate<'a> {
     pub locale: &'a str,
 }
 
-#[derive(TemplateOnce)]
+#[derive(TemplateSimple)]
 #[template(path = "footer_revision.stpl", rm_whitespace = true)]
 pub struct FooterRevisionTemplate<'a> {
     pub revision: i32,
@@ -149,7 +148,7 @@ pub struct FooterRevisionTemplate<'a> {
     pub locale: &'a str,
 }
 
-#[derive(TemplateOnce)]
+#[derive(TemplateSimple)]
 #[template(path = "navbar.stpl", rm_whitespace = true)]
 pub struct NavbarTemplate<'a, I, K, V, V2>
 where

@@ -27,7 +27,7 @@ pub struct MuxConn {
 }
 
 impl MuxConn {
-    pub fn new(tx: OwnedWriteHalf, rx: EnvelopeRead<BufReader<OwnedReadHalf>>, seed: i32) -> Self {
+    pub const fn new(tx: OwnedWriteHalf, rx: EnvelopeRead<BufReader<OwnedReadHalf>>, seed: i32) -> Self {
         Self { tx, rx, seed }
     }
     pub async fn recv_file_list(&mut self) -> Result<Vec<FileEntry>> {

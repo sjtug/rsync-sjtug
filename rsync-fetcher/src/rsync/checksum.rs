@@ -41,7 +41,7 @@ impl SumHead {
         let checksum_len = 16;
 
         Self {
-            checksum_count: i32::try_from((len + block_len - 1) / block_len).expect("overflow"),
+            checksum_count: i32::try_from(len.div_ceil(block_len)).expect("overflow"),
             block_len: i32::try_from(block_len).expect("overflow"),
             checksum_len,
             remainder_len: i32::try_from(len % block_len).expect("overflow"),
@@ -207,11 +207,11 @@ mod tests {
     use crate::rsync::checksum::{checksum_payload, checksum_payload_basic, SumHead};
 
     #[inline]
-    fn must_checksum_payload_basic_eq_simd_(data: Vec<u8>) -> (Vec<u8>, Vec<u8>) {
+    fn must_checksum_payload_basic_eq_simd_(data: &[u8]) -> (Vec<u8>, Vec<u8>) {
         let file_len = data.len() as u64;
 
         let mut f = tempfile().expect("tempfile");
-        f.write_all(&data).expect("write_all");
+        f.write_all(data).expect("write_all");
         f.seek(SeekFrom::Start(0)).expect("seek");
 
         let sum_head = SumHead::sum_sizes_sqroot(file_len);
@@ -224,14 +224,14 @@ mod tests {
 
     #[proptest]
     fn must_checksum_payload_basic_eq_simd(data: Vec<u8>) {
-        let (chksum_simd, chksum_basic) = must_checksum_payload_basic_eq_simd_(data);
+        let (chksum_simd, chksum_basic) = must_checksum_payload_basic_eq_simd_(&data);
         prop_assert_eq!(chksum_simd, chksum_basic);
     }
 
     #[test]
     fn checksum_payload_simd_regression_1() {
         let data = vec![0u8; 11199];
-        let (chksum_simd, chksum_basic) = must_checksum_payload_basic_eq_simd_(data);
+        let (chksum_simd, chksum_basic) = must_checksum_payload_basic_eq_simd_(&data);
         assert_eq!(chksum_simd, chksum_basic);
     }
 }

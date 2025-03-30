@@ -1,7 +1,7 @@
 use actix_web::web::Data;
 use actix_web::Responder;
 use eyre::Result;
-use metrics::{describe_counter, describe_histogram, Unit};
+use metrics::{describe_counter, describe_histogram, set_global_recorder, Unit};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use metrics_tracing_context::TracingContextLayer;
 use metrics_util::layers::Layer;
@@ -62,7 +62,7 @@ pub fn init_metrics() -> Result<PrometheusHandle> {
     let handle = recorder.handle();
 
     let traced_recorder = TracingContextLayer::only_allow(ALLOWED_NAMESPACES).layer(recorder);
-    metrics::set_boxed_recorder(Box::new(traced_recorder))?;
+    set_global_recorder(traced_recorder)?;
 
     Ok(handle)
 }

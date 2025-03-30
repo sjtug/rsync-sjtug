@@ -7,13 +7,12 @@ use std::sync::Arc;
 use dashmap::DashSet;
 use eyre::Result;
 use futures::stream::FuturesUnordered;
-use futures::TryStreamExt;
+use futures::{StreamExt, TryStreamExt};
 use opendal::{ErrorKind, Operator};
 use tap::TapOptional;
 use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
-use tokio_util::compat::TokioAsyncReadCompatExt;
 use tracing::{debug, info, warn};
 
 use rsync_core::metadata::{MetaExtra, Metadata};
@@ -63,7 +62,7 @@ impl Uploader {
 
     pub async fn upload_tasks(self) -> Result<()> {
         let futs: FuturesUnordered<_> = (0..UPLOAD_CONN).map(|id| self.upload_task(id)).collect();
-        futs.try_collect().await?;
+        let _: () = futs.try_collect().await?;
         Ok(())
     }
 
@@ -135,19 +134,22 @@ impl Uploader {
                 format!("attachment; filename=\"{encoded_name}\"; filename*=UTF-8''{encoded_name}")
             });
 
-            let mut writer = content_disposition
+            let writer = content_disposition
                 .map_or_else(
-                    || self.s3.writer_with(&key).buffer(UPLOAD_CHUNK_SIZE),
+                    || self.s3.writer_with(&key).chunk(UPLOAD_CHUNK_SIZE),
                     |content_disposition| {
                         self.s3
                             .writer_with(&key)
-                            .buffer(UPLOAD_CHUNK_SIZE)
+                            .chunk(UPLOAD_CHUNK_SIZE)
                             .content_disposition(&content_disposition)
                     },
                 )
                 .await?;
-            writer.copy(target_file.compat()).await?;
-            writer.close().await?;
+
+            let writer_sink = writer.into_bytes_sink();
+            let file_stream =
+                tokio_util::io::ReaderStream::with_capacity(target_file, UPLOAD_CHUNK_SIZE);
+            file_stream.forward(writer_sink).await?;
         }
         Ok(())
     }

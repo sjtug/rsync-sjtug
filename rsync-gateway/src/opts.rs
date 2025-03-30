@@ -42,11 +42,11 @@ pub struct Config {
     /// S3 endpoint url.
     ///
     /// To specify credentials, use environment variables:
-    /// AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+    /// `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
     pub s3_url: String,
     /// S3 storage region.
     pub s3_region: String,
-    /// PostgreSQL database url.
+    /// `PostgreSQL` database url.
     #[doku(example = "postgres://postgres@localhost:5432/rsync-sjtug")]
     pub database_url: String,
     /// Cache options.

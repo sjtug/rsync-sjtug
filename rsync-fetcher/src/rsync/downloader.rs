@@ -8,11 +8,12 @@ use std::sync::Arc;
 
 use eyre::{bail, eyre, Result};
 use futures::stream::FuturesUnordered;
-use futures::{FutureExt, TryStreamExt};
+use futures::{FutureExt, TryStreamExt, SinkExt};
 use opendal::Operator;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
+use tokio_util::codec::{BytesCodec, FramedWrite};
 use tracing::{debug, warn};
 
 use rsync_core::utils::ToHex;
@@ -22,6 +23,8 @@ use crate::plan::TransferItem;
 use crate::rsync::file_list::FileEntry;
 use crate::rsync::progress_display::ProgressDisplay;
 use crate::utils::{hash, ignore_mode};
+
+const DOWNLOAD_CHUNK_SIZE: usize = 10 * 1024 * 1024;
 
 pub struct Downloader {
     file_list: Arc<Vec<FileEntry>>,
@@ -33,7 +36,7 @@ pub struct Downloader {
 }
 
 impl Downloader {
-    pub fn new(
+    pub const fn new(
         file_list: Arc<Vec<FileEntry>>,
         s3: Operator,
         s3_prefix: String,
@@ -58,7 +61,7 @@ struct DownloadEntry<'a> {
     path: &'a [u8],
 }
 
-impl<'a> Debug for DownloadEntry<'a> {
+impl Debug for DownloadEntry<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DownloadEntry")
             .field("idx", &self.idx)
@@ -123,6 +126,7 @@ impl Downloader {
             let permit = self.basis_tx.reserve().await?;
             self.pb.inc_basis(1);
             self.pb.inc_basis_downloading(1);
+            
             let basis_path = self
                 .basis_dir
                 .join(format!("{:x}", hash(entry.path).as_hex()));
@@ -133,12 +137,16 @@ impl Downloader {
                 .truncate(true)
                 .open(&basis_path)
                 .await?;
+            let mut file_sink = FramedWrite::new(&mut basis_file, BytesCodec::new());
+            
             let key = format!("{}{:x}", self.s3_prefix, entry.blake2b_hash.as_hex());
             let copy_result = {
-                let basis_mut = &mut basis_file;
+                let file_sink_mut = &mut file_sink;
                 async move {
-                    let mut rd = self.s3.reader(&key).await?;
-                    tokio::io::copy(&mut rd, basis_mut).await?;
+                    let reader = self.s3.reader_with(&key).chunk(DOWNLOAD_CHUNK_SIZE).await?;
+                    let mut reader_stream = reader.into_bytes_stream(..).await?;
+                    file_sink_mut.send_all(&mut reader_stream).await?;
+                    
                     Ok::<_, io::Error>(())
                 }
             }

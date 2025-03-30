@@ -52,7 +52,7 @@ impl PgLock {
     }
 }
 
-impl<'lock, C: AsMut<PgConnection>> PgLockGuard<'lock, C> {
+impl<C: AsMut<PgConnection>> PgLockGuard<'_, C> {
     /// Unlock the lock.
     ///
     /// # Errors

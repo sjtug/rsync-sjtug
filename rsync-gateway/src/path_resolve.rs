@@ -4,7 +4,7 @@ use bstr::ByteSlice;
 use chrono::{DateTime, Utc};
 use eyre::{bail, Result};
 use get_size::GetSize;
-use metrics::increment_counter;
+use metrics::counter;
 use opendal::Operator;
 use rkyv::{Archive, Deserialize, Serialize};
 use sqlx::{Acquire, Postgres};
@@ -53,7 +53,7 @@ pub async fn resolve<'a>(
     Ok(match realpath(path, revision, db.clone()).await {
         Ok(Target::Directory(path)) => {
             let resolved = resolve_listing(&path, revision, list_hidden, db).await?;
-            increment_counter!(COUNTER_RESOLVED_LISTING);
+            counter!(COUNTER_RESOLVED_LISTING).increment(1);
             resolved
         }
         Ok(Target::Regular(blake2b)) => {
@@ -72,18 +72,18 @@ pub async fn resolve<'a>(
                 .presign_read_with(&s3_path, PRESIGN_TIMEOUT)
                 .override_content_disposition(&content_disposition)
                 .await?;
-            increment_counter!(COUNTER_RESOLVED_REGULAR);
+            counter!(COUNTER_RESOLVED_REGULAR).increment(1);
             Resolved::Regular {
                 url: presigned.uri().to_string(),
                 expired_at,
             }
         }
         Err(RealpathError::Resolve(e)) => {
-            increment_counter!(COUNTER_RESOLVED_MISSING);
+            counter!(COUNTER_RESOLVED_MISSING).increment(1);
             Resolved::NotFound { reason: e }
         }
         Err(e) => {
-            increment_counter!(COUNTER_RESOLVED_ERROR);
+            counter!(COUNTER_RESOLVED_ERROR).increment(1);
             error!(%e, "realpath error");
             bail!(e);
         }

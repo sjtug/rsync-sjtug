@@ -6,7 +6,6 @@ use std::time::Duration;
 use eyre::Result;
 use futures::FutureExt;
 use itertools::multizip;
-use sqlx::postgres::{PgHasArrayType, PgTypeInfo};
 use sqlx::types::chrono::{DateTime, Utc};
 use sqlx::{Acquire, Postgres};
 use tokio::sync::mpsc;
@@ -29,12 +28,6 @@ pub enum FileType {
     Symlink,
 }
 
-impl PgHasArrayType for FileType {
-    fn array_type_info() -> PgTypeInfo {
-        PgTypeInfo::with_name("_filetype")
-    }
-}
-
 /// Revision status.
 #[derive(sqlx::Type, Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "tests", derive(proptest_derive::Arbitrary))]
@@ -43,12 +36,6 @@ pub enum RevisionStatus {
     Partial,
     Live,
     Stale,
-}
-
-impl PgHasArrayType for RevisionStatus {
-    fn array_type_info() -> PgTypeInfo {
-        PgTypeInfo::with_name("_revision_status")
-    }
 }
 
 #[instrument(skip_all)]
