@@ -20,8 +20,8 @@ pub fn build_operator(opts: &S3Opts) -> Result<Operator> {
         .region(&opts.region)
         .bucket(&opts.bucket);
     Ok(Operator::new(builder)?
-        .layer(RetryLayer::new())
         .layer(TimeoutLayer::new())
+        .layer(RetryLayer::new())
         .layer(TracingLayer)
         .finish())
 }
