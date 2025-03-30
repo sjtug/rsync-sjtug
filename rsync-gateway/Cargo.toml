@@ -26,6 +26,7 @@ metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
 metrics-tracing-context = "0.18"
 metrics-util = "0.19"
+mimalloc = "0.1"
 moka = { version = "0.12", features = ["future"] }
 opendal = { version = "0.52", default-features = false, features = ["layers-metrics"] }
 percent-encoding = "2.2"

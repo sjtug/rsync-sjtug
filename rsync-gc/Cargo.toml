@@ -9,6 +9,7 @@ clap = { version = "4.5", features = ["derive", "env"] }
 dotenvy = "0.15"
 eyre = "0.6"
 futures = "0.3"
+mimalloc = "0.1"
 indicatif = "0.17"
 itertools = "0.14"
 opendal = { version = "0.52", default-features = false }

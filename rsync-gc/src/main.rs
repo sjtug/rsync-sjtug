@@ -21,6 +21,9 @@ use crate::opts::Opts;
 use crate::pg::{hashes_to_remove, mark_stale, remove_revisions};
 use crate::s3::bulk_delete_objs;
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 mod opts;
 mod pg;
 mod s3;

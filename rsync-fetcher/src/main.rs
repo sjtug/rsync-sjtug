@@ -31,6 +31,9 @@ use crate::plan::diff_and_apply;
 use crate::rsync::{finalize, start_handshake, TaskBuilders};
 use crate::utils::{flatten_err, plan_stat};
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 mod consts;
 mod opts;
 mod pg;

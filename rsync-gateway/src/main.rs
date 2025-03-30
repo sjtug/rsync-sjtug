@@ -24,6 +24,9 @@ use crate::app::{configure, default_op_builder};
 use crate::metrics::init_metrics;
 use crate::opts::{load_config, patch_generated_config, validate_config, Config, Opts};
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 mod app;
 mod cache;
 mod handler;
