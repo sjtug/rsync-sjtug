@@ -1,5 +1,5 @@
 [workspace]
-members = ["rsync-core", "rsync-fetcher", "rsync-gateway", "rsync-gc", "rsync-migration"]
+members = ["rsync-core", "rsync-fetcher", "rsync-gateway", "rsync-gc"]
 resolver = "2"
 
 [profile.dev.package.sqlx-macros]
