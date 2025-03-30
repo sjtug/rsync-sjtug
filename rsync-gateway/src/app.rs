@@ -41,11 +41,11 @@ pub fn default_op_builder(opts: &Config, ep: &Endpoint) -> Result<Operator> {
     })
 }
 
-pub async fn configure(
+pub async fn configure<B: for<'a> Fn(&'a Config, &'a Endpoint) -> Result<Operator>>(
     opts: &Config,
-    op_builder: impl for<'a> Fn(&'a Config, &'a Endpoint) -> Result<Operator>,
+    op_builder: B,
     pool: PgPool,
-) -> Result<(AbortJoinHandle<()>, impl Fn(&mut ServiceConfig) + Clone)> {
+) -> Result<(AbortJoinHandle<()>, impl Fn(&mut ServiceConfig) + Clone + use<B>)> {
     let listener = RevisionsChangeListener::default();
     let listener_handle = listener.spawn(&pool);
 
@@ -76,7 +76,7 @@ pub async fn configure(
 
     Ok((
         listener_handle,
-        assert_hrtb(move |cfg| {
+        move |cfg: &mut ServiceConfig| {
             for (prefix, endpoint, revision, guard, cache, op) in &*prefix_state {
                 let state = State::new(revision.clone(), guard.clone());
                 cfg.service(
@@ -97,11 +97,6 @@ pub async fn configure(
                 );
             }
             cfg.app_data(Data::new(pool.clone()));
-        }),
+        },
     ))
-}
-
-// Enforcing the HRTB is necessary to avoid a lifetime error.
-const fn assert_hrtb<F: Fn(&mut ServiceConfig)>(f: F) -> F {
-    f
 }

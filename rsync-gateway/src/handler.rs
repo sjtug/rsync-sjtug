@@ -45,7 +45,7 @@ pub async fn main_handler(
     request_id: RequestId,
     req: HttpRequest,
     accepted_language: Header<AcceptLanguage>,
-) -> impl Responder {
+) -> impl Responder + use<> {
     let prefix = prefix.as_str();
     let full_path = req.path();
     let path = req.match_info().get("path").map_or_else(Vec::new, |path| {
@@ -135,7 +135,7 @@ pub async fn rev_handler(
     db: Data<PgPool>,
     request_id: RequestId,
     accepted_language: Header<AcceptLanguage>,
-) -> impl Responder {
+) -> impl Responder + use<> {
     let prefix = prefix.as_str();
     let mut conn = db.acquire().await.unwrap();
 

@@ -36,7 +36,7 @@ impl Resolved {
         generated_at: DateTime<Utc>,
         query_time: Duration,
         locale: &str,
-    ) -> impl Responder {
+    ) -> impl Responder + use<> {
         match self {
             Self::Directory { entries } => {
                 if !req_path.ends_with(b"/") {
@@ -134,7 +134,7 @@ pub fn render_internal_error(
     err: &eyre::Report,
     request_id: &Uuid,
     locale: &str,
-) -> impl Responder {
+) -> impl Responder + use<> {
     error!(?err, "internal error");
 
     let status = StatusCode::INTERNAL_SERVER_ERROR;
@@ -196,7 +196,7 @@ pub fn render_revision_stats(
     query_time: Duration,
     prefix: &str,
     locale: &str,
-) -> impl Responder {
+) -> impl Responder + use<> {
     let last_rev = entries.last().map_or(0, |entry| entry.revision);
     let rendered = RevisionStatsTemplate {
         entries: entries.iter(),
