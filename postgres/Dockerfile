@@ -4,8 +4,8 @@ ARG pg_cron_version=1.5.2
 
 RUN apk add --no-cache --virtual .build-deps \
         build-base \
-        clang15-dev \
-        llvm15-dev \
+        clang19-dev \
+        llvm19-dev \
         make \
         wget
 #        postgresql-dev \
@@ -19,7 +19,7 @@ RUN cd /usr/src/pg_cron \
     && make \
     && make install
 
-FROM rust:1.71-alpine AS rs_builder
+FROM rust:1.85.1-alpine AS rs_builder
 
 RUN apk add --no-cache --virtual .build-deps build-base
 
