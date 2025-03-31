@@ -9,10 +9,11 @@ use std::time::Duration;
 
 use actix_web::http::StatusCode;
 use actix_web::web::Redirect;
-use actix_web::{Either, HttpResponse, Responder};
+use actix_web::{Either, HttpRequest, HttpResponse, Responder};
 use bstr::ByteSlice;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
+use opendal::Operator;
 use sailfish::TemplateSimple;
 use tracing::error;
 use uuid::Uuid;
@@ -27,8 +28,10 @@ use crate::templates::{
 impl Resolved {
     /// Render the resolved result to an HTTP response.
     #[allow(clippy::too_many_arguments)]
-    pub fn to_responder(
+    pub async fn to_responder(
         &self,
+        req: &HttpRequest,
+        op: &Operator,
         req_path: &[u8],
         full_path: &str,
         prefix: &str,
@@ -81,7 +84,7 @@ impl Resolved {
                 .expect("render must not fail");
                 Either::Left(HttpResponse::Ok().content_type("text/html").body(rendered))
             }
-            Self::Regular { url, expired_at: _ } => Either::Right(Redirect::to(url.to_string())),
+            Self::Regular { proxy } => Either::Left(proxy.serve(req, op).await),
             Self::NotFound { reason } => {
                 let status = StatusCode::NOT_FOUND;
                 let error_display = reason.to_string();
@@ -263,6 +266,8 @@ mod tests {
     use chrono::{DateTime, Utc};
     use eyre::eyre;
     use once_cell::sync::Lazy;
+    use opendal::Operator;
+    use opendal::services::Memory;
     use proptest::arbitrary::Arbitrary;
     use proptest::prelude::TestCaseError;
     use proptest::strategy::Strategy;
@@ -407,8 +412,11 @@ mod tests {
         }
 
         let req = TestRequest::get().to_http_request();
+        let op = Operator::new(Memory::default()).expect("opendal").finish();
         let resp = resolved
             .to_responder(
+                &req,
+                &op,
                 &req_path,
                 &raw_path,
                 &prefix,
@@ -417,6 +425,7 @@ mod tests {
                 query_time,
                 "en",
             )
+            .await
             .respond_to(&req);
         let Ok(body) = to_bytes(resp.into_body()).await else {
             panic!("must to bytes");

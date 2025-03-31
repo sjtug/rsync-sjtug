@@ -35,6 +35,7 @@ mod metrics;
 mod opts;
 mod path_resolve;
 mod pg;
+mod proxy_serve;
 mod realpath;
 mod render;
 mod state;

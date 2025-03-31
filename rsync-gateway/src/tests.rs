@@ -143,11 +143,6 @@ mod db_required {
         map
     }
 
-    // Enforcing the HRTB is necessary to avoid a lifetime error.
-    const fn assert_hrtb<F: for<'a> Fn(&'a Config, &'a Endpoint) -> Result<Operator>>(f: F) -> F {
-        f
-    }
-
     macro_rules! assert_in_resp {
         ($resp: expr, $s: expr) => {
             assert!(
@@ -261,9 +256,7 @@ mod db_required {
                 },
             },
         };
-        let (listener_handle, cfg) = configure(&opts, assert_hrtb(op_builder), pool.clone())
-            .await
-            .unwrap();
+        let (listener_handle, cfg) = configure(&opts, op_builder, pool.clone()).await.unwrap();
         let app = test::init_service(
             App::new()
                 .wrap(NormalizePath::new(TrailingSlash::MergeOnly))

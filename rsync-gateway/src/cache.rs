@@ -1,13 +1,12 @@
 use std::future::Future;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use arc_swap::ArcSwap;
 use eyre::{Report, Result, eyre};
 use futures::{FutureExt, TryFutureExt};
 use get_size::GetSize;
 use metrics::{counter, histogram};
-use moka::Expiry;
 use moka::future::Cache;
 use rkyv::{Deserialize, Infallible};
 use tracing::{debug, instrument, warn};
@@ -19,9 +18,6 @@ use crate::metrics::{
 };
 use crate::opts::CacheOpts;
 use crate::path_resolve::{ArchivedResolved, Resolved};
-
-/// Pre-sign timeout is 24 hours.
-pub const PRESIGN_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24);
 
 /// 2-level NINE cache for resolved results in a single namespace.
 ///
@@ -101,8 +97,6 @@ impl NSCacheInner {
         Self {
             l1: Cache::builder()
                 .max_capacity(l1_capacity)
-                // expire file entries after pre-sign timeout
-                .expire_after(ExpiryPolicy)
                 // we use heap size as weight
                 .weigher(|k: &Vec<u8>, v: &Arc<Resolved>| {
                     u32::try_from(k.get_heap_size() + v.get_heap_size()).unwrap_or(u32::MAX)
@@ -110,8 +104,6 @@ impl NSCacheInner {
                 .build(),
             l2: Cache::builder()
                 .max_capacity(l2_capacity)
-                // expire file entries after pre-sign timeout
-                .expire_after(ExpiryPolicy)
                 // we use heap size as weight
                 .weigher(|k: &Vec<u8>, v: &Arc<MaybeCompressed>| {
                     u32::try_from(k.get_heap_size() + v.get_heap_size()).unwrap_or(u32::MAX)
@@ -286,39 +278,6 @@ impl MaybeCompressed {
 
 pub type RawCache = Cache<Vec<u8>, Arc<Resolved>>;
 pub type RawCompressedCache = Cache<Vec<u8>, Arc<MaybeCompressed>>;
-
-struct ExpiryPolicy;
-
-impl Expiry<Vec<u8>, Arc<Resolved>> for ExpiryPolicy {
-    fn expire_after_create(
-        &self,
-        _: &Vec<u8>,
-        value: &Arc<Resolved>,
-        current_time: Instant,
-    ) -> Option<Duration> {
-        if let Resolved::Regular { expired_at, .. } = &**value {
-            Some(current_time - *expired_at)
-        } else {
-            None
-        }
-    }
-}
-
-impl Expiry<Vec<u8>, Arc<MaybeCompressed>> for ExpiryPolicy {
-    fn expire_after_create(
-        &self,
-        key: &Vec<u8>,
-        value: &Arc<MaybeCompressed>,
-        current_time: Instant,
-    ) -> Option<Duration> {
-        match &**value {
-            MaybeCompressed::Compressed { .. } => None,
-            MaybeCompressed::Uncompressed(resolved) => {
-                self.expire_after_create(key, resolved, current_time)
-            }
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

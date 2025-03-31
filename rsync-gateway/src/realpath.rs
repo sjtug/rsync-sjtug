@@ -18,7 +18,7 @@ pub const MAX_SYMLINK_LOOKUP: usize = 40;
 #[derive(Debug, Clone)]
 pub enum Target {
     /// A regular file.
-    Regular([u8; 20]),
+    Regular([u8; 20], i64),
     /// A directory.
     Directory(Vec<u8>),
 }
@@ -129,7 +129,7 @@ pub async fn realpath<'a>(
     if let Some(entry) = entry_of_path(revision, path, &mut *conn).await? {
         // Fast path: the entry exists.
         match entry {
-            Entry::Regular { blake2b } => return Ok(Target::Regular(blake2b)),
+            Entry::Regular { blake2b, len } => return Ok(Target::Regular(blake2b, len)),
             Entry::Directory => return Ok(Target::Directory(path.to_vec())),
             Entry::Symlink { .. } => {}
         }
@@ -174,7 +174,7 @@ pub async fn realpath<'a>(
                     giveup!(Broken, path, explain);
                 };
                 match entry {
-                    Entry::Regular { blake2b } => {
+                    Entry::Regular { blake2b, len } => {
                         if !left.is_empty() {
                             explain!(
                                 resolved,
@@ -185,7 +185,7 @@ pub async fn realpath<'a>(
                             giveup!(Broken, path, explain);
                         }
                         // explain!(resolved, next_comp, "resolved to regular file, done", explain);
-                        return Ok(Target::Regular(blake2b));
+                        return Ok(Target::Regular(blake2b, len));
                     }
                     Entry::Directory => {
                         explain!(resolved, next_comp, "followed directory", explain);

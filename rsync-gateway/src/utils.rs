@@ -3,8 +3,6 @@ use std::fmt::{Debug, Display, Formatter};
 use actix_web::ResponseError;
 use actix_web::http::StatusCode;
 use eyre::Report;
-use rkyv::Fallible;
-use rkyv::with::{ArchiveWith, DeserializeWith, SerializeWith};
 
 /// Wrapper around `eyre::Report` that implements `actix_web::ResponseError`.
 pub struct ReportWrapper {
@@ -63,34 +61,5 @@ impl<T> ReportExt for Result<T, Report> {
 
     fn with_status(self, status: StatusCode) -> Self::Output {
         self.map_err(|e| e.with_status(status))
-    }
-}
-
-pub struct SkipRkyv;
-
-impl<T> ArchiveWith<T> for SkipRkyv {
-    type Archived = ();
-    type Resolver = ();
-
-    unsafe fn resolve_with(_: &T, _: usize, (): Self::Resolver, _: *mut Self::Archived) {
-        panic!("Attempted to resolve a field explicitly skipped")
-    }
-}
-
-impl<T, S> SerializeWith<T, S> for SkipRkyv
-where
-    S: Fallible,
-{
-    fn serialize_with(_: &T, _: &mut S) -> Result<Self::Resolver, S::Error> {
-        panic!("Attempted to serialize a field explicitly skipped")
-    }
-}
-
-impl<F, T, D> DeserializeWith<F, T, D> for SkipRkyv
-where
-    D: Fallible,
-{
-    fn deserialize_with(_: &F, _: &mut D) -> Result<T, D::Error> {
-        panic!("Attempted to deserialize a field explicitly skipped")
     }
 }

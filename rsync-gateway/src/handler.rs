@@ -62,7 +62,6 @@ pub async fn main_handler(
     let locale = select_locale(&accepted_language);
 
     let Endpoint {
-        namespace,
         s3_prefix,
         list_hidden,
         ..
@@ -88,16 +87,7 @@ pub async fn main_handler(
     let resolved = match cache
         .get_or_insert(
             &path,
-            resolve(
-                namespace,
-                &path,
-                revision,
-                s3_prefix,
-                *list_hidden,
-                &**db,
-                &op,
-            )
-            .boxed_local(),
+            resolve(&path, revision, s3_prefix, *list_hidden, &**db).boxed_local(),
         )
         .await
     {
@@ -118,15 +108,21 @@ pub async fn main_handler(
     };
     let query_time = query_start.elapsed();
 
-    Either::Right(resolved.to_responder(
-        &req_path,
-        full_path,
-        prefix,
-        revision,
-        generated_at,
-        query_time,
-        locale,
-    ))
+    Either::Right(
+        resolved
+            .to_responder(
+                &req,
+                &op,
+                &req_path,
+                full_path,
+                prefix,
+                revision,
+                generated_at,
+                query_time,
+                locale,
+            )
+            .await,
+    )
 }
 
 pub async fn rev_handler(

@@ -17,11 +17,12 @@ struct RawEntry {
     r#type: FileType,
     blake2b: Option<Vec<u8>>,
     target: Option<Vec<u8>>,
+    len: Option<i64>,
 }
 
 /// Entry information needed to resolve a symlink.
 pub enum Entry {
-    Regular { blake2b: [u8; 20] },
+    Regular { blake2b: [u8; 20], len: i64 },
     Directory,
     Symlink { target: Vec<u8> },
 }
@@ -36,6 +37,7 @@ impl From<RawEntry> for Entry {
                     .expect("regular blake2b")
                     .try_into()
                     .expect("blake2b length"),
+                len: value.len.expect("regular len"),
             },
             FileType::Symlink => Self::Symlink {
                 target: value.target.expect("symlink target"),
