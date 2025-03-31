@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use eyre::Result;
-use futures::{stream, StreamExt, TryFutureExt, TryStreamExt};
+use futures::{StreamExt, TryFutureExt, TryStreamExt, stream};
 use indicatif::{ProgressBar, ProgressStyle};
 use opendal::Operator;
 

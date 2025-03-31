@@ -3,9 +3,9 @@
 use arrayref::array_ref;
 
 use self::arch::{
-    __m128i, __m256i, _mm256_castsi128_si256, _mm256_inserti128_si256, _mm256_unpackhi_epi32,
-    _mm256_unpackhi_epi64, _mm256_unpacklo_epi32, _mm256_unpacklo_epi64, _mm_loadu_si128,
-    _mm_unpackhi_epi32, _mm_unpackhi_epi64, _mm_unpacklo_epi32, _mm_unpacklo_epi64,
+    __m128i, __m256i, _mm_loadu_si128, _mm_unpackhi_epi32, _mm_unpackhi_epi64, _mm_unpacklo_epi32,
+    _mm_unpacklo_epi64, _mm256_castsi128_si256, _mm256_inserti128_si256, _mm256_unpackhi_epi32,
+    _mm256_unpackhi_epi64, _mm256_unpacklo_epi32, _mm256_unpacklo_epi64,
 };
 #[cfg(target_arch = "x86")]
 use std::arch::x86 as arch;

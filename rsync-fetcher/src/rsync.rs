@@ -1,4 +1,4 @@
-use eyre::{bail, Context, ContextCompat, Result};
+use eyre::{Context, ContextCompat, Result, bail};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_socks::tcp::Socks5Stream;

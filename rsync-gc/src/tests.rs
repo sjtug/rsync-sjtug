@@ -7,7 +7,7 @@ mod db_required {
 
     use crate::pg::mark_stale;
     use rsync_core::pg::{
-        change_revision_status, create_revision, ensure_repository, RevisionStatus,
+        RevisionStatus, change_revision_status, create_revision, ensure_repository,
     };
     use rsync_core::tests::generate_random_namespace;
 

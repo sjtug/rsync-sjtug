@@ -1,7 +1,7 @@
 use eyre::Result;
+use opendal::Operator;
 use opendal::layers::{RetryLayer, TimeoutLayer, TracingLayer};
 use opendal::services::S3;
-use opendal::Operator;
 
 #[derive(Debug, Clone)]
 pub struct S3Opts {

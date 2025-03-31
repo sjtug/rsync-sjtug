@@ -6,13 +6,13 @@ use eyre::Result;
 use futures::FutureExt;
 use sqlx::PgPool;
 use tokio::time::interval;
-use tracing::{info, info_span, warn, Instrument};
+use tracing::{Instrument, info, info_span, warn};
 
 use rsync_core::utils::AbortJoinHandle;
 
 use crate::cache::NSCache;
 use crate::listener::RevisionsChangeListener;
-use crate::pg::{latest_live_revision, Revision};
+use crate::pg::{Revision, latest_live_revision};
 
 /// Per-thread state.
 pub struct State {
@@ -136,8 +136,8 @@ pub async fn listen_for_updates(
 mod tests {
     mod db_required {
         use std::iter;
-        use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
         use std::time::{Duration, UNIX_EPOCH};
 
         use arc_swap::ArcSwap;
@@ -146,13 +146,13 @@ mod tests {
         use tokio::time::sleep;
 
         use rsync_core::pg::{
-            change_revision_status, create_revision_at, ensure_repository, RevisionStatus,
+            RevisionStatus, change_revision_status, create_revision_at, ensure_repository,
         };
         use rsync_core::tests::generate_random_namespace;
 
         use crate::listener::RevisionsChangeListener;
         use crate::pg::Revision;
-        use crate::state::{listen_for_updates, Invalidatable};
+        use crate::state::{Invalidatable, listen_for_updates};
 
         #[derive(Debug, Clone, Default)]
         struct MockInvalidatable {

@@ -6,7 +6,7 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use clean_path::Clean;
-use eyre::{bail, Result};
+use eyre::{Result, bail};
 use indicatif::ProgressBar;
 use tokio::io::{AsyncReadExt, BufReader};
 use tokio::net::tcp::OwnedReadHalf;

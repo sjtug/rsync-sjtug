@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use eyre::{eyre, Context, Result};
+use eyre::{Context, Result, eyre};
 use scan_fmt::scan_fmt;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tracing::debug;

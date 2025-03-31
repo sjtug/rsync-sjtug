@@ -1,13 +1,13 @@
 use std::panic::PanicHookInfo;
 use std::{env, io, panic};
 
-use tracing::{error, Subscriber};
+use tracing::{Subscriber, error};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{reload, EnvFilter, Layer};
+use tracing_subscriber::{EnvFilter, Layer, reload};
 
 pub use opts::{LogFormat, LogTarget};
 

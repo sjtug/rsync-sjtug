@@ -3,12 +3,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use arc_swap::ArcSwap;
-use eyre::{eyre, Report, Result};
+use eyre::{Report, Result, eyre};
 use futures::{FutureExt, TryFutureExt};
 use get_size::GetSize;
 use metrics::{counter, histogram};
-use moka::future::Cache;
 use moka::Expiry;
+use moka::future::Cache;
 use rkyv::{Deserialize, Infallible};
 use tracing::{debug, instrument, warn};
 

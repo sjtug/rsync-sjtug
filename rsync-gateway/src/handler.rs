@@ -14,7 +14,7 @@ use crate::app::Prefix;
 use crate::cache::NSCache;
 use crate::opts::Endpoint;
 use crate::path_resolve::resolve;
-use crate::pg::{revision_stats, Revision};
+use crate::pg::{Revision, revision_stats};
 use crate::render::{render_internal_error, render_revision_stats};
 use crate::state::State;
 

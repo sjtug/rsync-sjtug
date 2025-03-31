@@ -204,7 +204,7 @@ mod tests {
     use tempfile::tempfile;
     use test_strategy::proptest;
 
-    use crate::rsync::checksum::{checksum_payload, checksum_payload_basic, SumHead};
+    use crate::rsync::checksum::{SumHead, checksum_payload, checksum_payload_basic};
 
     #[inline]
     fn must_checksum_payload_basic_eq_simd_(data: &[u8]) -> (Vec<u8>, Vec<u8>) {

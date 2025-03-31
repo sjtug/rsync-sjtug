@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use bstr::ByteSlice;
 use chrono::{DateTime, Utc};
-use eyre::{bail, Result};
+use eyre::{Result, bail};
 use get_size::GetSize;
 use metrics::counter;
 use opendal::Operator;
@@ -10,7 +10,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use sqlx::{Acquire, Postgres};
 use tracing::{error, instrument};
 
-use rsync_core::utils::{ToHex, ATTR_CHAR};
+use rsync_core::utils::{ATTR_CHAR, ToHex};
 
 use crate::cache::PRESIGN_TIMEOUT;
 use crate::metrics::{
@@ -18,7 +18,7 @@ use crate::metrics::{
     COUNTER_RESOLVED_REGULAR,
 };
 use crate::pg::list_directory;
-use crate::realpath::{realpath, RealpathError, ResolveError, Target};
+use crate::realpath::{RealpathError, ResolveError, Target, realpath};
 use crate::utils::SkipRkyv;
 
 /// A resolved result that can be rendered or redirected to.

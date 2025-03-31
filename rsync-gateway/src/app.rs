@@ -9,14 +9,14 @@ use futures::future;
 use opendal::Operator;
 use sqlx::PgPool;
 
-use rsync_core::s3::{build_operator, S3Opts};
+use rsync_core::s3::{S3Opts, build_operator};
 use rsync_core::utils::AbortJoinHandle;
 
 use crate::cache::NSCache;
 use crate::handler;
 use crate::listener::RevisionsChangeListener;
 use crate::opts::{Config, Endpoint};
-use crate::state::{listen_for_updates, State};
+use crate::state::{State, listen_for_updates};
 
 pub struct Prefix(pub String);
 
@@ -45,7 +45,10 @@ pub async fn configure<B: for<'a> Fn(&'a Config, &'a Endpoint) -> Result<Operato
     opts: &Config,
     op_builder: B,
     pool: PgPool,
-) -> Result<(AbortJoinHandle<()>, impl Fn(&mut ServiceConfig) + Clone + use<B>)> {
+) -> Result<(
+    AbortJoinHandle<()>,
+    impl Fn(&mut ServiceConfig) + Clone + use<B>,
+)> {
     let listener = RevisionsChangeListener::default();
     let listener_handle = listener.spawn(&pool);
 
@@ -74,29 +77,26 @@ pub async fn configure<B: for<'a> Fn(&'a Config, &'a Endpoint) -> Result<Operato
         .await?,
     );
 
-    Ok((
-        listener_handle,
-        move |cfg: &mut ServiceConfig| {
-            for (prefix, endpoint, revision, guard, cache, op) in &*prefix_state {
-                let state = State::new(revision.clone(), guard.clone());
-                cfg.service(
-                    web::scope(&format!("/{prefix}"))
-                        .app_data(Data::new(Prefix(prefix.clone())))
-                        .app_data(Data::new(state))
-                        .app_data(Data::from(endpoint.clone()))
-                        .app_data(Data::from(cache.clone()))
-                        .app_data(Data::new(op.clone()))
-                        .route(
-                            "/_revisions",
-                            web::route().guard(get_or_head()).to(handler::rev_handler),
-                        )
-                        .service(
-                            web::resource(["", "/{path:(.|/)*}"])
-                                .route(web::route().guard(get_or_head()).to(handler::main_handler)),
-                        ),
-                );
-            }
-            cfg.app_data(Data::new(pool.clone()));
-        },
-    ))
+    Ok((listener_handle, move |cfg: &mut ServiceConfig| {
+        for (prefix, endpoint, revision, guard, cache, op) in &*prefix_state {
+            let state = State::new(revision.clone(), guard.clone());
+            cfg.service(
+                web::scope(&format!("/{prefix}"))
+                    .app_data(Data::new(Prefix(prefix.clone())))
+                    .app_data(Data::new(state))
+                    .app_data(Data::from(endpoint.clone()))
+                    .app_data(Data::from(cache.clone()))
+                    .app_data(Data::new(op.clone()))
+                    .route(
+                        "/_revisions",
+                        web::route().guard(get_or_head()).to(handler::rev_handler),
+                    )
+                    .service(
+                        web::resource(["", "/{path:(.|/)*}"])
+                            .route(web::route().guard(get_or_head()).to(handler::main_handler)),
+                    ),
+            );
+        }
+        cfg.app_data(Data::new(pool.clone()));
+    }))
 }

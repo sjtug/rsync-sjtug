@@ -172,13 +172,13 @@ mod tests {
 
         use rsync_core::metadata::Metadata;
         use rsync_core::pg::{
-            change_revision_status, create_revision, ensure_repository, FileType, RevisionStatus,
+            FileType, RevisionStatus, change_revision_status, create_revision, ensure_repository,
         };
         use rsync_core::tests::generate_random_namespace;
         use rsync_core::tests::insert_to_revision;
 
         use crate::pg::{create_fl_table, insert_file_list_to_db};
-        use crate::plan::{diff_and_apply, TransferItem};
+        use crate::plan::{TransferItem, diff_and_apply};
         use crate::rsync::file_list::FileEntry;
 
         async fn assert_entry_eq<'a>(

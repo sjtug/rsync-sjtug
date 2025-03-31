@@ -16,19 +16,19 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 use tracing::info;
 
-use rsync_core::logging::{init_color_eyre, init_logger};
 use rsync_core::logging::{LogFormat, LogTarget};
+use rsync_core::logging::{init_color_eyre, init_logger};
 use rsync_core::pg::{
-    change_revision_status, create_revision, ensure_repository, insert_task, RevisionStatus,
+    RevisionStatus, change_revision_status, create_revision, ensure_repository, insert_task,
 };
 use rsync_core::pg_lock::PgLock;
-use rsync_core::s3::{build_operator, S3Opts};
+use rsync_core::s3::{S3Opts, build_operator};
 
 use crate::pg::{
     analyse_objects, create_fl_table, drop_fl_table, insert_file_list_to_db, update_parent_ids,
 };
 use crate::plan::diff_and_apply;
-use crate::rsync::{finalize, start_handshake, TaskBuilders};
+use crate::rsync::{TaskBuilders, finalize, start_handshake};
 use crate::utils::{flatten_err, plan_stat};
 
 #[global_allocator]

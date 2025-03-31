@@ -3,8 +3,8 @@ use std::ops::Add;
 
 use blake2::Blake2b;
 use bytesize::ByteSize;
-use digest::consts::U20;
 use digest::Digest;
+use digest::consts::U20;
 use tracing::warn;
 
 use rsync_core::utils::ToHex;

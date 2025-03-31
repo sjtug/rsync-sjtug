@@ -257,9 +257,9 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
+    use actix_web::Responder;
     use actix_web::body::to_bytes;
     use actix_web::test::TestRequest;
-    use actix_web::Responder;
     use chrono::{DateTime, Utc};
     use eyre::eyre;
     use once_cell::sync::Lazy;
@@ -268,7 +268,7 @@ mod tests {
     use proptest::strategy::Strategy;
     use proptest::{prop_assert, prop_assume, prop_oneof};
     use reqwest::header::HeaderMap;
-    use reqwest::{header, Client};
+    use reqwest::{Client, header};
     use serde::Deserialize;
     use test_strategy::proptest;
     use uuid::Uuid;

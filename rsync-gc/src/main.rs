@@ -12,10 +12,10 @@ use eyre::Result;
 use sqlx::PgPool;
 use tracing::info;
 
-use rsync_core::logging::{init_color_eyre, init_logger};
 use rsync_core::logging::{LogFormat, LogTarget};
+use rsync_core::logging::{init_color_eyre, init_logger};
 use rsync_core::pg_lock::PgLock;
-use rsync_core::s3::{build_operator, S3Opts};
+use rsync_core::s3::{S3Opts, build_operator};
 
 use crate::opts::Opts;
 use crate::pg::{hashes_to_remove, mark_stale, remove_revisions};

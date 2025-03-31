@@ -1,4 +1,3 @@
-
 /// Stats returned by server at the end of transmission.
 #[derive(Debug, Copy, Clone)]
 #[allow(dead_code)]

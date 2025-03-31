@@ -5,14 +5,14 @@
 
 use std::fmt::{Debug, Formatter};
 
-use base64::engine::general_purpose;
 use base64::Engine;
+use base64::engine::general_purpose;
 use digest::Digest;
-use eyre::{bail, Result};
+use eyre::{Result, bail};
 use md4::Md4;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tracing::{debug, instrument};
 use url::Url;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -20,7 +20,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use crate::rsync::envelope::EnvelopeRead;
 use crate::rsync::filter::Rule;
 use crate::rsync::mux_conn::MuxConn;
-use crate::rsync::version::{Version, SUPPORTED_VERSION};
+use crate::rsync::version::{SUPPORTED_VERSION, Version};
 
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct Auth {

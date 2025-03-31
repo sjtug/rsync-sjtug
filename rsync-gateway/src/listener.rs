@@ -1,16 +1,16 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use eyre::{bail, Report, Result};
-use futures::future::BoxFuture;
+use eyre::{Report, Result, bail};
 use futures::TryStreamExt;
+use futures::future::BoxFuture;
 use scopeguard::defer;
 use serde::Deserialize;
-use sqlx::postgres::PgListener;
 use sqlx::PgPool;
+use sqlx::postgres::PgListener;
 use tokio::sync::RwLock;
 use tracing::{debug, error};
 

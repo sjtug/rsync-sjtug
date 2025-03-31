@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use rsync_core::metadata::{MetaExtra, Metadata};
-use rsync_core::utils::{ToHex, ATTR_CHAR};
+use rsync_core::utils::{ATTR_CHAR, ToHex};
 
 use crate::consts::UPLOAD_CONN;
 use crate::rsync::file_list::FileEntry;

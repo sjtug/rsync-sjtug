@@ -6,15 +6,15 @@ use std::path::Path;
 use std::sync::Arc;
 
 use eyre::Result;
-use futures::{stream, StreamExt};
+use futures::{StreamExt, stream};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::OwnedWriteHalf;
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::{Semaphore, mpsc};
 use tracing::{debug, info};
 
 use crate::plan::TransferItem;
-use crate::rsync::checksum::{checksum_payload, SumHead};
+use crate::rsync::checksum::{SumHead, checksum_payload};
 use crate::rsync::file_list::FileEntry;
 use crate::rsync::progress_display::ProgressDisplay;
 use crate::utils::ignore_mode;

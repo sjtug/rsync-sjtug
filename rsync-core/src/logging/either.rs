@@ -1,5 +1,5 @@
-use tracing_subscriber::fmt::writer::EitherWriter;
 use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::fmt::writer::EitherWriter;
 
 pub enum EitherMakeWriter<A, B> {
     Left(A),

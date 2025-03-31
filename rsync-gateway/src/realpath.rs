@@ -10,7 +10,7 @@ use sqlx::{Acquire, Postgres};
 use thiserror::Error;
 use tracing::instrument;
 
-use crate::pg::{entry_of_path, Entry};
+use crate::pg::{Entry, entry_of_path};
 
 /// Max allowed symlink lookup depth. Same as linux.
 pub const MAX_SYMLINK_LOOKUP: usize = 40;

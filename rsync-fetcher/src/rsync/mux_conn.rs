@@ -6,11 +6,12 @@ use opendal::Operator;
 use tempfile::TempDir;
 use tokio::io::BufReader;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::{Semaphore, mpsc};
 
 use rsync_core::metadata::Metadata;
 
 use crate::consts::{BASIS_BUFFER_LIMIT, UPLOAD_CONN};
+use crate::rsync::TaskBuilders;
 use crate::rsync::downloader::Downloader;
 use crate::rsync::envelope::EnvelopeRead;
 use crate::rsync::file_list::FileEntry;
@@ -18,7 +19,6 @@ use crate::rsync::generator::Generator;
 use crate::rsync::progress_display::ProgressDisplay;
 use crate::rsync::receiver::Receiver;
 use crate::rsync::uploader::Uploader;
-use crate::rsync::TaskBuilders;
 
 pub struct MuxConn {
     tx: OwnedWriteHalf,
@@ -27,7 +27,11 @@ pub struct MuxConn {
 }
 
 impl MuxConn {
-    pub const fn new(tx: OwnedWriteHalf, rx: EnvelopeRead<BufReader<OwnedReadHalf>>, seed: i32) -> Self {
+    pub const fn new(
+        tx: OwnedWriteHalf,
+        rx: EnvelopeRead<BufReader<OwnedReadHalf>>,
+        seed: i32,
+    ) -> Self {
         Self { tx, rx, seed }
     }
     pub async fn recv_file_list(&mut self) -> Result<Vec<FileEntry>> {

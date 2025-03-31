@@ -1,5 +1,5 @@
-use blake2::digest::consts::U8;
 use blake2::Digest;
+use blake2::digest::consts::U8;
 use eyre::bail;
 use sqlx::PgConnection;
 

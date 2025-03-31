@@ -6,15 +6,15 @@ use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use blake2::Blake2b;
-use digest::consts::U20;
 use digest::Digest;
-use eyre::{ensure, Result};
+use digest::consts::U20;
+use eyre::{Result, ensure};
 use md4::Md4;
-use tempfile::{tempfile_in, TempDir, TempPath};
+use tempfile::{TempDir, TempPath, tempfile_in};
 use tokio::fs;
 use tokio::io::{AsyncReadExt, BufReader};
 use tokio::net::tcp::OwnedReadHalf;
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::{Semaphore, mpsc};
 use tracing::{debug, info, instrument};
 
 use rsync_core::utils::ToHex;

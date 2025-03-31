@@ -1,7 +1,7 @@
-use actix_web::web::Data;
 use actix_web::Responder;
+use actix_web::web::Data;
 use eyre::Result;
-use metrics::{describe_counter, describe_histogram, set_global_recorder, Unit};
+use metrics::{Unit, describe_counter, describe_histogram, set_global_recorder};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use metrics_tracing_context::TracingContextLayer;
 use metrics_util::layers::Layer;

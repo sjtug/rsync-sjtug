@@ -8,7 +8,7 @@
 
 use actix_web::middleware::TrailingSlash;
 use actix_web::web::Data;
-use actix_web::{web, App, HttpServer};
+use actix_web::{App, HttpServer, web};
 use actix_web_lab::middleware::NormalizePath;
 use clap::Parser;
 use eyre::Result;
@@ -16,13 +16,13 @@ use sqlx::PgPool;
 use tracing::{error, info, warn};
 use tracing_actix_web::TracingLogger;
 
-use rsync_core::logging::{init_color_eyre, init_logger};
 use rsync_core::logging::{LogFormat, LogTarget};
+use rsync_core::logging::{init_color_eyre, init_logger};
 use rsync_core::pg_lock::PgLock;
 
 use crate::app::{configure, default_op_builder};
 use crate::metrics::init_metrics;
-use crate::opts::{load_config, patch_generated_config, validate_config, Config, Opts};
+use crate::opts::{Config, Opts, load_config, patch_generated_config, validate_config};
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;

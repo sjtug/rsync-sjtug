@@ -5,7 +5,7 @@ use proptest::strategy::Just;
 use time::util::days_in_year;
 use toml::Value;
 
-use crate::opts::{patch_generated_config, Config};
+use crate::opts::{Config, patch_generated_config};
 
 prop_compose! {
     pub fn datetime_strategy()(
@@ -37,9 +37,9 @@ mod db_required {
     use std::sync::Arc;
     use std::time::UNIX_EPOCH;
 
-    use actix_web::http::{StatusCode};
+    use actix_web::http::StatusCode;
     use actix_web::middleware::{NormalizePath, TrailingSlash};
-    use actix_web::{test, App};
+    use actix_web::{App, test};
     use bytesize::ByteSize;
     use chrono::DateTime;
     use eyre::Result;
@@ -50,10 +50,10 @@ mod db_required {
     use sqlx::PgPool;
     use tracing_actix_web::TracingLogger;
 
-    use rsync_core::logging::{test_init_logger, LogFormat, LogTarget};
+    use rsync_core::logging::{LogFormat, LogTarget, test_init_logger};
     use rsync_core::metadata::{MetaExtra, Metadata};
     use rsync_core::pg::{
-        change_revision_status, create_revision, ensure_repository, RevisionStatus,
+        RevisionStatus, change_revision_status, create_revision, ensure_repository,
     };
     use rsync_core::tests::{generate_random_namespace, insert_to_revision};
     use rsync_core::utils::ToHex;
@@ -150,10 +150,12 @@ mod db_required {
 
     macro_rules! assert_in_resp {
         ($resp: expr, $s: expr) => {
-            assert!(String::from_utf8_lossy(
-                &actix_web::body::to_bytes($resp.into_body()).await.unwrap()
-            )
-            .contains($s));
+            assert!(
+                String::from_utf8_lossy(
+                    &actix_web::body::to_bytes($resp.into_body()).await.unwrap()
+                )
+                .contains($s)
+            );
         };
     }
 

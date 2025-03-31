@@ -5,16 +5,16 @@ use std::time::Duration;
 use bigdecimal::ToPrimitive;
 use bytesize::ByteSize;
 use chrono::{DateTime, SecondsFormat, Utc};
-use sailfish::runtime::{Buffer, Render};
 use sailfish::TemplateSimple;
+use sailfish::runtime::{Buffer, Render};
 use sqlx::postgres::types::PgInterval;
 use sqlx::types::BigDecimal;
 
+use crate::path_resolve::ListingEntry;
+use crate::pg::RevisionStat;
 use rsync_core::pg::RevisionStatus;
 use rsync_core::utils::PATH_ASCII_SET;
 use rust_i18n::t;
-use crate::path_resolve::ListingEntry;
-use crate::pg::RevisionStat;
 
 fn lossy_display(name: &[u8]) -> impl Display + '_ {
     String::from_utf8_lossy(name)

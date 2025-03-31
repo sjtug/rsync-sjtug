@@ -6,9 +6,9 @@ use std::io::SeekFrom;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use eyre::{bail, eyre, Result};
+use eyre::{Result, bail, eyre};
 use futures::stream::FuturesUnordered;
-use futures::{FutureExt, TryStreamExt, SinkExt};
+use futures::{FutureExt, SinkExt, TryStreamExt};
 use opendal::Operator;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::AsyncSeekExt;
@@ -126,7 +126,7 @@ impl Downloader {
             let permit = self.basis_tx.reserve().await?;
             self.pb.inc_basis(1);
             self.pb.inc_basis_downloading(1);
-            
+
             let basis_path = self
                 .basis_dir
                 .join(format!("{:x}", hash(entry.path).as_hex()));
@@ -138,7 +138,7 @@ impl Downloader {
                 .open(&basis_path)
                 .await?;
             let mut file_sink = FramedWrite::new(&mut basis_file, BytesCodec::new());
-            
+
             let key = format!("{}{:x}", self.s3_prefix, entry.blake2b_hash.as_hex());
             let copy_result = {
                 let file_sink_mut = &mut file_sink;
@@ -146,7 +146,7 @@ impl Downloader {
                     let reader = self.s3.reader_with(&key).chunk(DOWNLOAD_CHUNK_SIZE).await?;
                     let mut reader_stream = reader.into_bytes_stream(..).await?;
                     file_sink_mut.send_all(&mut reader_stream).await?;
-                    
+
                     Ok::<_, io::Error>(())
                 }
             }

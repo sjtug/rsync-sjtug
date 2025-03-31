@@ -155,7 +155,7 @@ mod tests {
     mod db_required {
         use sqlx::PgPool;
 
-        use rsync_core::pg::{create_revision, ensure_repository, FileType, RevisionStatus};
+        use rsync_core::pg::{FileType, RevisionStatus, create_revision, ensure_repository};
         use rsync_core::tests::generate_random_namespace;
 
         use crate::pg::update_parent_ids;
