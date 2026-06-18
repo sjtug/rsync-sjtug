@@ -2,6 +2,7 @@
 name = "rsync-gc"
 version = "0.1.0"
 edition = "2024"
+license = "BSD-3-Clause"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -13,7 +14,10 @@ mimalloc = "0.1"
 indicatif = "0.17"
 itertools = "0.14"
 opendal = { version = "0.52", default-features = false }
-rsync-core = { path = "../rsync-core", features = ["s3", "pg"] }
+rsync-core = { version = "0.1.0", path = "../rsync-core", features = [
+  "s3",
+  "pg",
+] }
 sqlx = { version = "0.9", features = [
   "runtime-tokio",
   "tls-rustls-aws-lc-rs",
@@ -22,8 +26,8 @@ sqlx = { version = "0.9", features = [
 ] }
 tokio = { version = "1.44", features = ["full"] }
 tracing = "0.1"
-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 
 [dev-dependencies]
 itertools = "0.14"
-rsync-core = { path = "../rsync-core", features = ["tests"] }
+rsync-core = { version = "0.1.0", path = "../rsync-core", features = ["tests"] }

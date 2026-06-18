@@ -2,6 +2,7 @@
 name = "rsync-fetcher"
 version = "0.1.0"
 edition = "2024"
+license = "BSD-3-Clause"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -28,7 +29,7 @@ multiversion = "0.8"
 num = "0.4"
 opendal = { version = "0.52", default-features = false }
 percent-encoding = "2.3"
-rsync-core = { path = "../rsync-core", features = [
+rsync-core = { version = "0.1.0", path = "../rsync-core", features = [
   "s3",
   "percent-encoding",
   "pg",
@@ -50,9 +51,9 @@ tracing = "0.1"
 unix_mode = "0.1"
 url = "2.5"
 zeroize = { version = "1.8", features = ["derive"] }
-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 
 [dev-dependencies]
 proptest = "1.6"
-rsync-core = { path = "../rsync-core", features = ["tests"] }
+rsync-core = { version = "0.1.0", path = "../rsync-core", features = ["tests"] }
 test-strategy = "0.4"
