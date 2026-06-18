@@ -12,100 +12,33 @@ permissions:
   contents: read
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        name: Checkout
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-        name: Setup Cargo Toolchain
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-        name: Rust Cache
-      - name: Check Code Format
-        run: cargo fmt -- --check
-      - name: Run Clippy Lints
-        run: cargo clippy --workspace --all-targets --all-features --tests
-
-  test-prop:
-    name: Test (proptest)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Setup Cargo Toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - name: Setup Java
-        uses: actions/setup-java@v2
-        with:
-          distribution: 'liberica'
-          java-version: '17'
-          java-package: 'jre'
-      - uses: Swatinem/rust-cache@v2
-        name: Rust Cache
-      - name: Install nextest
-        uses: taiki-e/install-action@nextest
-      - name: Install just
-        uses: taiki-e/install-action@just
-      - name: Running Tests
-        run: just test-prop-all
-
-
   test:
-    name: Test
+    name: Nix flake check
     runs-on: ubuntu-latest
+    permissions:
+      actions: write # caching
+      contents: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      - name: Setup Cargo Toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        name: Rust Cache
+      - name: Install Nix
+        uses: cachix/install-nix-action@51f3067b56fe8ae331890c77d4e454f6d60615ff # v31.10.2
         with:
-          lookup-only: true
-      - name: Install nextest
-        uses: taiki-e/install-action@nextest
-      - name: Install just
-        uses: taiki-e/install-action@just
-      - name: Install sqlx-cli
-        uses: taiki-e/install-action@v2
+          extra_nix_config: |
+            keep-env-derivations = true
+            keep-outputs = true
+      - name: Restore and save Nix store
+        uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
-          tool: sqlx-cli
-      - name: Build postgres image
-        uses: docker/build-push-action@v4
-        with:
-          context: postgres
-          load: true
-          tags: postgres-rsync-sjtug
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Start postgres
-        run: |
-          docker run -d --rm --name postgres -p 5432:5432 \
-            -v $PWD/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro \
-            -v $PWD/postgres/data:/var/lib/postgresql/data \
-            -e POSTGRES_PASSWORD=postgres \
-            postgres-rsync-sjtug
-      - name: Wait for postgres
-        run: |
-          until docker exec postgres pg_isready --username=rsync-sjtug; do
-            sleep 1
-          done
-      - name: Check .sqlx files
-        run: cargo sqlx prepare --check --workspace -- --tests
-        env:
-          DATABASE_URL: postgresql://rsync-sjtug:postgres@localhost:5432/rsync-sjtug
-      - name: Running Tests
-        run: just test-all
-        env:
-            DATABASE_URL: postgresql://rsync-sjtug:postgres@localhost:5432/rsync-sjtug
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 4G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-created: 0
+          purge-last-accessed: P1DT12H # 1 day and 12 hours
+          purge-primary-key: never
+      - name: Run all checks
+        run: nix flake check -Lv --keep-going --option log-lines 0

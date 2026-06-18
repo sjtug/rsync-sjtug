@@ -24,6 +24,10 @@
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix2container = {
+      url = "github:nlewo/nix2container";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -53,6 +57,7 @@
             stdenv
             pkgsStatic
             cacert
+            sqlx-cli
             rust-jemalloc-sys
             ;
           craneLib = (inputs.crane.mkLib pkgs).overrideToolchain (p: p.rustToolchain);
@@ -73,8 +78,11 @@
           commonArgs = {
             inherit src;
             strictDeps = true;
-            nativeBuildInputs = [ cacert ];
+            nativeBuildInputs = [
+              cacert
+            ];
             buildInputs = [ rust-jemalloc-sys ];
+            SQLX_OFFLINE = "true";
             doCheck = false; # Test separately with cargo-nextest
           };
 
@@ -83,6 +91,13 @@
           # It is *highly* recommended to use something like cargo-hakari to avoid
           # cache misses when building individual top-level-crates
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+          crates = {
+            "rsync-core" = ./rsync-core;
+            "rsync-fetcher" = ./rsync-fetcher;
+            "rsync-gateway" = ./rsync-gateway;
+            "rsync-gc" = ./rsync-gc;
+          };
 
           individualCrateArgs = commonArgs // {
             inherit cargoArtifacts;
@@ -102,11 +117,11 @@
                   ./.sqlx
                   ./sqls
                   ./tests/migrations
-                  (craneLib.fileset.commonCargoSources ./rsync-core)
+                  (craneLib.fileset.commonCargoSources crates."rsync-core")
                   (craneLib.fileset.commonCargoSources ./workspace-hack)
                   (craneLib.fileset.commonCargoSources crate)
                 ]
-                ++ lib.optionals (crate == ./rsync-gateway) [
+                ++ lib.optionals (crate == crates."rsync-gateway") [
                   ./rsync-gateway/locales
                   ./rsync-gateway/templates
                 ]
@@ -130,63 +145,40 @@
           # Note that the cargo workspace must define `workspace.members` using wildcards,
           # otherwise, omitting a crate (like we do below) will result in errors since
           # cargo won't be able to find the sources for all members.
-          rsync-core = craneLib.buildPackage (
-            individualCrateArgs
-            // {
-              pname = "rsync-core";
-              cargoExtraArgs = "-p rsync-core";
-              src = fileSetForCrate ./rsync-core;
-              CARGO_PROFILE = "dev";
-              CARGO_BUILD_TARGET = defaultTarget;
-            }
-          );
-          rsync-fetcher = craneLib.buildPackage (
-            individualCrateArgs
-            // {
-              pname = "rsync-fetcher";
-              cargoExtraArgs = "-p rsync-fetcher";
-              src = fileSetForCrate ./rsync-fetcher;
-              CARGO_PROFILE = "dev";
-              CARGO_BUILD_TARGET = defaultTarget;
-            }
-          );
-          rsync-gateway = craneLib.buildPackage (
-            individualCrateArgs
-            // {
-              pname = "rsync-gateway";
-              cargoExtraArgs = "-p rsync-gateway";
-              src = fileSetForCrate ./rsync-gateway;
-              CARGO_PROFILE = "dev";
-              CARGO_BUILD_TARGET = defaultTarget;
-            }
-          );
-          rsync-gc = craneLib.buildPackage (
-            individualCrateArgs
-            // {
-              pname = "rsync-gc";
-              cargoExtraArgs = "-p rsync-gc";
-              src = fileSetForCrate ./rsync-gc;
-              CARGO_PROFILE = "dev";
-              CARGO_BUILD_TARGET = defaultTarget;
-            }
-          );
+          workspaces = lib.mapAttrs (
+            pname: crate:
+            craneLib.buildPackage (
+              individualCrateArgs
+              // {
+                inherit pname;
+                cargoExtraArgs = "-p ${pname}";
+                src = fileSetForCrate crate;
+                CARGO_PROFILE = "dev";
+                CARGO_BUILD_TARGET = defaultTarget;
+              }
+            )
+          ) crates;
 
-          # my-workspace-musl = craneLib.buildPackage (
-          #   commonArgs
-          #   // {
-          #     nativeBuildInputs = [
-          #       # Required by aws-lc-sys
-          #       cacert
-          #       stdenv.cc
-          #       pkgsStatic.stdenv.cc
-          #     ];
-          #     buildInputs = [ pkgsStatic.rust-jemalloc-sys ];
-          #     doCheck = true; # always run checkPhase for release artifact
-          #     CARGO_PROFILE = "release";
-          #     CARGO_BUILD_TARGET = muslTarget;
-          #     CARGO_BUILD_FLAGS = "-C target-feature=+crt-static";
-          #   }
-          # );
+          workspaces-musl = lib.mapAttrs (
+            pname: crate:
+            craneLib.buildPackage (
+              individualCrateArgs
+              // {
+                inherit pname;
+                cargoExtraArgs = "-p ${pname}";
+                src = fileSetForCrate crate;
+                nativeBuildInputs = (commonArgs.nativeBuildInputs or [ ]) ++ [
+                  # Required by aws-lc-sys
+                  stdenv.cc
+                  pkgsStatic.stdenv.cc
+                ];
+                buildInputs = [ pkgsStatic.rust-jemalloc-sys ];
+                CARGO_PROFILE = "release";
+                CARGO_BUILD_TARGET = muslTarget;
+                CARGO_BUILD_FLAGS = "-C target-feature=+crt-static";
+              }
+            )
+          ) crates;
         in
         {
           _module.args.pkgs = import inputs.nixpkgs {
@@ -232,15 +224,7 @@
             treefmt.enable = true;
           };
 
-          checks = {
-            # Build the crate as part of `nix flake check` for convenience
-            inherit
-              rsync-core
-              rsync-fetcher
-              rsync-gateway
-              rsync-gc
-              ;
-
+          checks = workspaces // {
             # Run clippy (and deny all warnings) on the crate source,
             # again, reusing the dependency artifacts from above.
             #
@@ -340,6 +324,7 @@
                 # pkg-config
                 # rustPlatform.bindgenHook
                 cargo-hakari
+                sqlx-cli
 
                 ### Miscellaneous ###
                 # cargo-audit
@@ -358,7 +343,15 @@
               ];
           };
 
-          # packages.default = ;
+          packages =
+            workspaces
+            // lib.mapAttrs' (pname: workspace: lib.nameValuePair "${pname}_musl" workspace) workspaces-musl
+            // {
+              postgres-image = import ./postgres/docker.nix {
+                inherit craneLib lib pkgs;
+                nix2container = inputs.nix2container.packages.${system}.nix2container;
+              };
+            };
         };
     };
 }

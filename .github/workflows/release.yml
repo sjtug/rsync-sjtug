@@ -1,92 +1,80 @@
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+
+name: Release
 
 permissions:
   contents: read
 
-name: Release
-
 jobs:
-  create_release:
-    name: Create Release
+  release:
+    name: Release static binaries
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
-      - uses: taiki-e/create-gh-release-action@v1
+      - name: Install Nix
+        uses: cachix/install-nix-action@51f3067b56fe8ae331890c77d4e454f6d60615ff # v31.10.2
         with:
+          extra_nix_config: |
+            keep-env-derivations = true
+            keep-outputs = true
+      - name: Build static binaries
+        run: |
+          nix build .#rsync-fetcher_musl -Lv --out-link result-rsync-fetcher
+          nix build .#rsync-gateway_musl -Lv --out-link result-rsync-gateway
+          nix build .#rsync-gc_musl -Lv --out-link result-rsync-gc
+      - name: Create archive
+        run: |
+          archive=rsync-sjtug-x86_64-unknown-linux-musl
+          mkdir -p "dist/$archive/bin"
+          cp result-rsync-fetcher/bin/rsync-fetcher "dist/$archive/bin/"
+          cp result-rsync-gateway/bin/rsync-gateway "dist/$archive/bin/"
+          cp result-rsync-gc/bin/rsync-gc "dist/$archive/bin/"
+          tar -C dist -czf "$archive.tar.gz" "$archive"
+          sha512sum "$archive.tar.gz" > "$archive.tar.gz.sha512"
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: ${{ github.event.head_commit.message }}
           draft: true
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-  release:
-    name: Release
-    permissions:
-      checks: read
-      contents: write
-    strategy:
-      matrix:
-        include:
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-            cross: true
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-            cross: true
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Setup Cargo Toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - name: Setup Cross Toolchain
-        if: matrix.cross
-        uses: taiki-e/install-action@cross
-      - name: Wait for build on master to succeed
-        uses: lewagon/wait-on-check-action@v1.3.1
-        with:
-          ref: master
-          check-name: 'Build (${{ matrix.target }}, ${{ matrix.os }}, ${{ matrix.cross }})'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-      - uses: Swatinem/rust-cache@v2
-        name: Rust Cache
-        with:
-          shared-key: build-${{ matrix.target }}-refs/heads/master
-          lookup-only: true
-      - uses: taiki-e/upload-rust-binary-action@v1
-        name: Build and Upload
-        with:
-          bin: rsync-gc,rsync-fetcher,rsync-gateway
-          archive: rsync-sjtug-$target
-          target: ${{ matrix.target }}
-          checksum: sha512
-          token: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            rsync-sjtug-x86_64-unknown-linux-musl.tar.gz
+            rsync-sjtug-x86_64-unknown-linux-musl.tar.gz.sha512
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release_image:
-    name: Release (Postgres image)
+    name: Release Postgres image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+      - name: Install Nix
+        uses: cachix/install-nix-action@51f3067b56fe8ae331890c77d4e454f6d60615ff # v31.10.2
+        with:
+          extra_nix_config: |
+            keep-env-derivations = true
+            keep-outputs = true
       - name: Login to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build postgres image
-        uses: docker/build-push-action@v4
-        with:
-          context: postgres
-          push: true
-          tags: photonquantum/postgres-rsync-sjtug:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Build and push postgres image
+        run: |
+          nix run .#postgres-image.copyToDockerDaemon -Lv
+          docker push photonquantum/postgres-rsync-sjtug:latest
