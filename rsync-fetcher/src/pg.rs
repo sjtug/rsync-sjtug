@@ -26,23 +26,25 @@ pub async fn create_fl_table<'a>(
     let ns_table = namespace_as_table(namespace);
 
     let mut txn = db.begin().await?;
-    sqlx::query(&format!("DROP TABLE IF EXISTS {ns_table}_fl"))
-        .execute(&mut *txn)
-        .await?;
-    sqlx::query(
-        &include_str!("../../sqls/create_fl_table.sql")
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "DROP TABLE IF EXISTS {ns_table}_fl"
+    )))
+    .execute(&mut *txn)
+    .await?;
+    sqlx::query(sqlx::AssertSqlSafe(
+        include_str!("../../sqls/create_fl_table.sql")
             .replace("rsync_filelist", &format!("{ns_table}_fl")),
-    )
+    ))
     .execute(&mut *txn)
     .await?;
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "CREATE INDEX {ns_table}_fl_nm_idx ON {ns_table}_fl (filename, mode)"
-    ))
+    )))
     .execute(&mut *txn)
     .await?;
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "CREATE INDEX {ns_table}_fl_m_idx ON {ns_table}_fl (mode)"
-    ))
+    )))
     .execute(&mut *txn)
     .await?;
     txn.commit().await?;
@@ -58,9 +60,11 @@ pub async fn drop_fl_table<'a>(
     let ns_table = namespace_as_table(namespace);
 
     let mut conn = db.acquire().await?;
-    sqlx::query(&format!("DROP TABLE IF EXISTS {ns_table}_fl"))
-        .execute(&mut *conn)
-        .await?;
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "DROP TABLE IF EXISTS {ns_table}_fl"
+    )))
+    .execute(&mut *conn)
+    .await?;
     Ok(())
 }
 
@@ -105,10 +109,10 @@ pub async fn insert_file_list_to_db<'a>(
         targets.chunks(INSERT_CHUNK_SIZE),
         ids.chunks(INSERT_CHUNK_SIZE),
     )) {
-        let result = sqlx::query(
-            &include_str!("../../sqls/insert_filelist.sql")
+        let result = sqlx::query(sqlx::AssertSqlSafe(
+            include_str!("../../sqls/insert_filelist.sql")
                 .replace("rsync_filelist", &format!("{ns_table}_fl")),
-        )
+        ))
         .bind(ns)
         .bind(ls)
         .bind(ms)
@@ -120,7 +124,7 @@ pub async fn insert_file_list_to_db<'a>(
         affected += result.rows_affected();
     }
 
-    sqlx::query(&format!("ANALYZE {ns_table}_fl"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("ANALYZE {ns_table}_fl")))
         .execute(&mut *txn)
         .await?;
     txn.commit().await?;

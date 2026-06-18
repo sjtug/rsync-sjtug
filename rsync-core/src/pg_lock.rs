@@ -35,7 +35,10 @@ impl PgLock {
     /// # Errors
     /// Returns an error if there's a problem acquiring the lock.
     #[allow(clippy::missing_panics_doc)]
-    pub async fn lock<C: AsMut<PgConnection>>(&self, mut conn: C) -> eyre::Result<PgLockGuard<C>> {
+    pub async fn lock<C: AsMut<PgConnection>>(
+        &self,
+        mut conn: C,
+    ) -> eyre::Result<PgLockGuard<'_, C>> {
         if self.shared {
             sqlx::query!("SELECT pg_advisory_lock_shared($1)", self.key)
                 .execute(conn.as_mut())

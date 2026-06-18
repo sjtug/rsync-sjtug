@@ -106,16 +106,14 @@ mod db_required {
             Arc::new(am)
         }
         async fn presign(&self, path: &str, _: OpPresign) -> opendal::Result<RpPresign> {
-            self.path_to_presign.get(path).map_or_else(
-                || Err(opendal::Error::new(ErrorKind::NotFound, "not found")),
-                |uri| {
-                    Ok(RpPresign::new(PresignedRequest::new(
-                        Method::GET,
-                        uri.clone(),
-                        Default::default(),
-                    )))
-                },
-            )
+            let Some(uri) = self.path_to_presign.get(path) else {
+                return Err(opendal::Error::new(ErrorKind::NotFound, "not found"));
+            };
+            Ok(RpPresign::new(PresignedRequest::new(
+                Method::GET,
+                uri.clone(),
+                Default::default(),
+            )))
         }
     }
 

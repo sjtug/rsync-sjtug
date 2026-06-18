@@ -186,21 +186,15 @@ impl Receiver {
             .basis_dir
             .path()
             .join(format!("{:x}", hash(path).as_hex()));
-        Ok(File::open(&basis_path)
-            .map(|f| {
-                Some(BasisFile {
-                    _path: TempPath::from_path(basis_path),
-                    file: f,
-                    pb: self.pb.clone(),
-                })
-            })
-            .or_else(|e| {
-                if e.kind() == io::ErrorKind::NotFound {
-                    Ok(None)
-                } else {
-                    Err(e)
-                }
-            })?)
+        match File::open(&basis_path) {
+            Ok(file) => Ok(Some(BasisFile {
+                _path: TempPath::try_from_path(basis_path)?,
+                file,
+                pb: self.pb.clone(),
+            })),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.into()),
+        }
     }
 
     async fn recv_data(&mut self, mut local_basis: Option<BasisFile>) -> Result<RecvResult> {

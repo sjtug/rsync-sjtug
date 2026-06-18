@@ -73,6 +73,7 @@ impl NSCache {
     }
     /// Invalidate L1 cache only.
     /// Debug only.
+    #[cfg(test)]
     pub fn invalidate_l1(&self) {
         let guard = self.inner.load();
         guard.l1.invalidate_all();

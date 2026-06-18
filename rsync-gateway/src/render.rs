@@ -222,7 +222,7 @@ fn comps_to_navbar<'a>(comps: &'a [&'a str]) -> impl TemplateSimple + 'a {
         .enumerate()
         .map(move |(i, component)| {
             let href = if count - i - 2 > 0 {
-                iter::repeat("../").take(count - i - 2).join("")
+                iter::repeat_n("../", count - i - 2).join("")
             } else {
                 ".".to_string()
             };
@@ -242,7 +242,7 @@ fn req_path_to_root_href(prefix: &str, req_path: &[u8]) -> String {
         req_path.find_iter(b"/").count()
     };
     if depth > 0 {
-        iter::repeat("../").take(depth).join("")
+        iter::repeat_n("../", depth).join("")
     } else if req_path.is_empty() {
         prefix.to_string()
     } else {

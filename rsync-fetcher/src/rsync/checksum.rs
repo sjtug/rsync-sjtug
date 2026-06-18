@@ -131,49 +131,46 @@ fn checksum_payload_(
     let mut buf_sum = Vec::with_capacity(sum_head.checksum_count as usize * 20);
     let mut block_remaining = sum_head.checksum_count as usize;
 
-    if enable_simd {
-        if let Some(simd_impl) = md4_simd::simd::Md4xN::select() {
-            // Sqrt of usize can't be negative.
-            let mut bufs: [_; md4_simd::simd::MAX_LANES] =
-                array_init::array_init(|_| vec![0u8; sum_head.block_len as usize + 4]);
+    if enable_simd && let Some(simd_impl) = md4_simd::simd::Md4xN::select() {
+        // Sqrt of usize can't be negative.
+        let mut bufs: [_; md4_simd::simd::MAX_LANES] =
+            array_init::array_init(|_| vec![0u8; sum_head.block_len as usize + 4]);
 
-            while block_remaining >= simd_impl.lanes() {
-                if file_remaining < sum_head.block_len as u64 * simd_impl.lanes() as u64 {
-                    // not enough data for simd
-                    break;
-                }
-
-                let mut datas: [&[u8]; md4_simd::simd::MAX_LANES] =
-                    [&[]; md4_simd::simd::MAX_LANES];
-                for (idx, buf) in bufs[0..simd_impl.lanes()].iter_mut().enumerate() {
-                    // let buf = &mut bufs[idx];
-
-                    // Sqrt of usize must be in u32 range.
-                    #[allow(clippy::cast_possible_truncation)]
-                    let n1 = sum_head.block_len as usize;
-
-                    file.read_exact(&mut buf[..n1]).expect("IO error");
-
-                    file_remaining -= n1 as u64;
-                    let buf_slice = &mut buf[..n1 + 4];
-                    buf_slice[n1..].copy_from_slice(&seed.to_le_bytes());
-
-                    datas[idx] = buf_slice;
-                }
-
-                let md4_hashes = simd_impl.md4(&datas);
-
-                for (idx, block) in datas[..simd_impl.lanes()].iter().enumerate() {
-                    // fast checksum (must remove seed from buffer)
-                    buf_sum.extend_from_slice(&checksum_1(&block[..block.len() - 4]).to_le_bytes());
-                    // slow checksum
-                    buf_sum.extend_from_slice(&md4_hashes[idx]);
-                }
-
-                block_remaining -= simd_impl.lanes();
+        while block_remaining >= simd_impl.lanes() {
+            if file_remaining < sum_head.block_len as u64 * simd_impl.lanes() as u64 {
+                // not enough data for simd
+                break;
             }
-            // final block shares the code with non-simd implementation
+
+            let mut datas: [&[u8]; md4_simd::simd::MAX_LANES] = [&[]; md4_simd::simd::MAX_LANES];
+            for (idx, buf) in bufs[0..simd_impl.lanes()].iter_mut().enumerate() {
+                // let buf = &mut bufs[idx];
+
+                // Sqrt of usize must be in u32 range.
+                #[allow(clippy::cast_possible_truncation)]
+                let n1 = sum_head.block_len as usize;
+
+                file.read_exact(&mut buf[..n1]).expect("IO error");
+
+                file_remaining -= n1 as u64;
+                let buf_slice = &mut buf[..n1 + 4];
+                buf_slice[n1..].copy_from_slice(&seed.to_le_bytes());
+
+                datas[idx] = buf_slice;
+            }
+
+            let md4_hashes = simd_impl.md4(&datas);
+
+            for (idx, block) in datas[..simd_impl.lanes()].iter().enumerate() {
+                // fast checksum (must remove seed from buffer)
+                buf_sum.extend_from_slice(&checksum_1(&block[..block.len() - 4]).to_le_bytes());
+                // slow checksum
+                buf_sum.extend_from_slice(&md4_hashes[idx]);
+            }
+
+            block_remaining -= simd_impl.lanes();
         }
+        // final block shares the code with non-simd implementation
     }
 
     // Sqrt of usize can't be negative.

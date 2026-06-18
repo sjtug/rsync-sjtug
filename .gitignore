@@ -7,3 +7,4 @@ test-gc.sh
 .env
 postgres/data
 tests/vnu/vnu.jar
+.pre-commit-config.flake.yaml

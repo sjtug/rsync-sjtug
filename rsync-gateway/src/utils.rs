@@ -7,6 +7,7 @@ use rkyv::Fallible;
 use rkyv::with::{ArchiveWith, DeserializeWith, SerializeWith};
 
 /// Wrapper around `eyre::Report` that implements `actix_web::ResponseError`.
+#[allow(dead_code)]
 pub struct ReportWrapper {
     report: Report,
     status: StatusCode,
@@ -30,6 +31,7 @@ impl ResponseError for ReportWrapper {
     }
 }
 
+#[allow(dead_code)]
 pub trait ReportExt {
     type Output;
     /// Convert `Report` into `ReportWrapper` with status code 500.
