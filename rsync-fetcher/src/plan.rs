@@ -70,10 +70,10 @@ async fn diff_changed_or_remote_only<'a>(
     // Make sure the namespace is a valid table name.
     let ns_table = namespace_as_table(namespace);
 
-    Ok(sqlx::query_as(
-        &include_str!("../../sqls/diff_changed_or_remote_only.sql")
+    Ok(sqlx::query_as(sqlx::AssertSqlSafe(
+        include_str!("../../sqls/diff_changed_or_remote_only.sql")
             .replace("rsync_filelist", &format!("{ns_table}_fl")),
-    )
+    ))
     .bind(namespace)
     .fetch_all(&mut *db.acquire().await?)
     .await?
@@ -96,10 +96,10 @@ async fn diff_unchanged_and_copy<'a>(
     // Make sure the namespace is a valid table name.
     let ns_table = namespace_as_table(namespace);
 
-    let result = sqlx::query(
-        &include_str!("../../sqls/diff_unchanged_and_copy.sql")
+    let result = sqlx::query(sqlx::AssertSqlSafe(
+        include_str!("../../sqls/diff_unchanged_and_copy.sql")
             .replace("rsync_filelist", &format!("{ns_table}_fl")),
-    )
+    ))
     .bind(namespace)
     .bind(target_revision)
     .execute(&mut *db.acquire().await?)
@@ -123,10 +123,10 @@ async fn copy_directories<'a>(
     // Make sure the namespace is a valid table name.
     let ns_table = namespace_as_table(namespace);
 
-    let result = sqlx::query(
-        &include_str!("../../sqls/copy_directories.sql")
+    let result = sqlx::query(sqlx::AssertSqlSafe(
+        include_str!("../../sqls/copy_directories.sql")
             .replace("rsync_filelist", &format!("{ns_table}_fl")),
-    )
+    ))
     .bind(target_revision)
     .execute(&mut *db.acquire().await?)
     .await?;
@@ -149,10 +149,10 @@ async fn copy_symlinks<'a>(
     // Make sure the namespace is a valid table name.
     let ns_table = namespace_as_table(namespace);
 
-    let result = sqlx::query(
-        &include_str!("../../sqls/copy_symlinks.sql")
+    let result = sqlx::query(sqlx::AssertSqlSafe(
+        include_str!("../../sqls/copy_symlinks.sql")
             .replace("rsync_filelist", &format!("{ns_table}_fl")),
-    )
+    ))
     .bind(target_revision)
     .execute(&mut *db.acquire().await?)
     .await?;
@@ -386,8 +386,7 @@ mod tests {
                 ],
                 &[], // in our test harness, partial revision is higher than latest
                 &[
-                    b"c".to_vec(), // same as partial
-                                   // no 'd' because not in remote
+                    b"c".to_vec(), // same as partial; no 'd' because not in remote
                 ],
                 &pool,
             )

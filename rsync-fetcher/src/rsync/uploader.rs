@@ -117,15 +117,11 @@ impl Uploader {
 
         // Check if file already exists. Might happen if the file is the same between two syncs,
         // or it's hard linked.
-        let exists = self
-            .s3
-            .stat(&key)
-            .await
-            .map(|_| true)
-            .or_else(|e| match e.kind() {
-                ErrorKind::NotFound => Ok(false),
-                _ => Err(e),
-            })?;
+        let exists = match self.s3.stat(&key).await {
+            Ok(_) => true,
+            Err(e) if e.kind() == ErrorKind::NotFound => false,
+            Err(e) => return Err(e.into()),
+        };
 
         // Only upload if it doesn't exist.
         if !exists {

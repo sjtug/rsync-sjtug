@@ -28,9 +28,19 @@ multiversion = "0.8"
 num = "0.4"
 opendal = { version = "0.52", default-features = false }
 percent-encoding = "2.3"
-rsync-core = { path = "../rsync-core", features = ["s3", "percent-encoding", "pg"] }
+rsync-core = { path = "../rsync-core", features = [
+  "s3",
+  "percent-encoding",
+  "pg",
+] }
 scan_fmt = "0.2"
-sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "chrono", "macros"] }
+sqlx = { version = "0.9", features = [
+  "runtime-tokio",
+  "tls-rustls-aws-lc-rs",
+  "postgres",
+  "chrono",
+  "macros",
+] }
 tap = "1.0"
 tempfile = "3.19"
 tokio = { version = "1.44", features = ["full"] }

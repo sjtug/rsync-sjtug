@@ -1,0 +1,41 @@
+[graph]
+# cargo-deny is really only ever intended to run on the "normal" tier-1 targets
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+]
+all-features = true
+
+[advisories]
+unmaintained = "workspace"
+unsound = "all"
+ignore = []
+
+[bans]
+multiple-versions = "allow"
+wildcards = 'deny'
+highlight = "all"
+deny = [
+  { crate = "openssl", use-instead = "rustls" },
+  { crate = "openssl-sys", use-instead = "rustls" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+
+[licenses]
+# We want really high confidence when inferring licenses from text
+confidence-threshold = 1.0
+allow = [
+  "Apache-2.0 WITH LLVM-exception",
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "ISC",
+  "MIT",
+  "Unicode-3.0",
+  "Zlib",
+  "MPL-2.0",
+]
+exceptions = []

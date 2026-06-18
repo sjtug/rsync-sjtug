@@ -21,14 +21,27 @@ eyre = "0.6"
 futures = "0.3"
 itertools = { version = "0.14", optional = true }
 metrics-tracing-context = { version = "0.18", optional = true }
-opendal = { version = "0.52", default-features = false, features = ["services-s3", "layers-tracing"], optional = true } # TODO reqwest: rustls
+opendal = { version = "0.52", default-features = false, features = [
+  "services-s3",
+  "layers-tracing",
+], optional = true } # TODO reqwest: rustls
 percent-encoding = { version = "2.3", optional = true }
 proptest = { version = "1.6", optional = true }
 proptest-derive = { version = "0.5", optional = true }
 rand = "0.9"
-reqwest = { version = "0.12.24", default-features = false, features = ["rustls-tls", "stream"] }
+reqwest = { version = "0.12.24", default-features = false, features = [
+  "rustls-tls",
+  "stream",
+] }
 serde = { version = "1.0", optional = true }
-sqlx = { version = "0.8", features = ["bigdecimal", "runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "chrono", "macros"], optional = true }
+sqlx = { version = "0.9", features = [
+  "bigdecimal",
+  "runtime-tokio",
+  "tls-rustls-aws-lc-rs",
+  "postgres",
+  "chrono",
+  "macros",
+], optional = true }
 stubborn-io = "0.3"
 tokio = { version = "1.44", features = ["full"] }
 tracing = "0.1"

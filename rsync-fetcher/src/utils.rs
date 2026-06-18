@@ -26,10 +26,10 @@ pub fn ignore_mode(mode: u32, path: Option<impl Debug>) -> bool {
 
     // We skip all non-regular files, including directories and symlinks.
     if !unix_mode::is_file(mode) {
-        if !(unix_mode::is_symlink(mode) || unix_mode::is_dir(mode)) {
-            if let Some(path) = path {
-                warn!(?path, mode = format!("{mode:o}"), "skip special file");
-            }
+        if !(unix_mode::is_symlink(mode) || unix_mode::is_dir(mode))
+            && let Some(path) = path
+        {
+            warn!(?path, mode = format!("{mode:o}"), "skip special file");
         }
         return true;
     }

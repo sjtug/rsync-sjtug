@@ -14,7 +14,12 @@ indicatif = "0.17"
 itertools = "0.14"
 opendal = { version = "0.52", default-features = false }
 rsync-core = { path = "../rsync-core", features = ["s3", "pg"] }
-sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "macros"] }
+sqlx = { version = "0.9", features = [
+  "runtime-tokio",
+  "tls-rustls-aws-lc-rs",
+  "postgres",
+  "macros",
+] }
 tokio = { version = "1.44", features = ["full"] }
 tracing = "0.1"
 
