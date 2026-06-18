@@ -4,8 +4,7 @@ on:
       - 'v*'
 
 permissions:
-  checks: read
-  contents: write
+  contents: read
 
 name: Release
 
@@ -13,8 +12,12 @@ jobs:
   create_release:
     name: Create Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: taiki-e/create-gh-release-action@v1
         with:
           draft: true
@@ -22,6 +25,9 @@ jobs:
 
   release:
     name: Release
+    permissions:
+      checks: read
+      contents: write
     strategy:
       matrix:
         include:
@@ -34,6 +40,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Setup Cargo Toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Setup Cross Toolchain
@@ -50,6 +58,7 @@ jobs:
         name: Rust Cache
         with:
           shared-key: build-${{ matrix.target }}-refs/heads/master
+          lookup-only: true
       - uses: taiki-e/upload-rust-binary-action@v1
         name: Build and Upload
         with:
@@ -64,6 +73,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
       - name: Login to Docker Hub

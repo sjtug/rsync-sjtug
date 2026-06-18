@@ -8,6 +8,9 @@ on:
 
 name: Build
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build
@@ -23,6 +26,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Setup Cargo Toolchain
         uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
