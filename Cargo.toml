@@ -4,5 +4,17 @@ resolver = "2"
 package.version = "0.1.0"
 metadata.crane.name = "rsync-sjtug"
 
+[profile.dev]
+opt-level = 0
+debug = true
+incremental = true
+
 [profile.dev.package.sqlx-macros]
 opt-level = 3
+
+[profile.release]
+opt-level = 3
+debug = false
+lto = "thin"
+codegen-units = 1
+incremental = false

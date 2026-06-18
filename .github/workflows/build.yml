@@ -13,32 +13,46 @@ permissions:
 
 jobs:
   build:
-    name: Build
-    strategy:
-      matrix:
-        include:
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-            cross: true
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-            cross: true
-    runs-on: ${{ matrix.os }}
+    name: Build GNU binaries
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write # caching
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
-      - name: Setup Cargo Toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: Install Nix
+        uses: cachix/install-nix-action@51f3067b56fe8ae331890c77d4e454f6d60615ff # v31.10.2
         with:
-          shared-key: build-${{ matrix.target }}-${{ github.ref }}
-      - name: Build
-        if: "! matrix.cross"
-        run: cargo build --release --workspace --target ${{ matrix.target }}
-      - name: Setup Cross Toolchain
-        if: matrix.cross
-        uses: taiki-e/install-action@cross
-      - name: Build (cross)
-        if: matrix.cross
-        run: cross build --release --workspace --target ${{ matrix.target }}
+          extra_nix_config: |
+            keep-env-derivations = true
+            keep-outputs = true
+      - name: Restore and save Nix store
+        uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 4G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-created: 0
+          purge-last-accessed: P1DT12H # 1 day and 12 hours
+          purge-primary-key: never
+      - name: Build GNU binaries
+        run: |
+          nix build .#rsync-fetcher -Lv --out-link result-rsync-fetcher
+          nix build .#rsync-gateway -Lv --out-link result-rsync-gateway
+          nix build .#rsync-gc -Lv --out-link result-rsync-gc
+      - name: Collect GNU binaries
+        run: |
+          mkdir -p dist/bin
+          cp result-rsync-fetcher/bin/rsync-fetcher dist/bin/
+          cp result-rsync-gateway/bin/rsync-gateway dist/bin/
+          cp result-rsync-gc/bin/rsync-gc dist/bin/
+      - name: Upload GNU binaries
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: rsync-sjtug-x86_64-unknown-linux-gnu
+          path: dist/bin/*
