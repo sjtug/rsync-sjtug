@@ -48,3 +48,4 @@ tracing = "0.1"
 tracing-error = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 url-escape = { version = "0.1", optional = true }
+workspace-hack = { version = "0.1", path = "../workspace-hack" }
