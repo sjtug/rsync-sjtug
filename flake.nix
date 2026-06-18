@@ -218,7 +218,7 @@
             programs = {
               nixfmt.enable = true;
               taplo.enable = true;
-              # zizmor.enable = true;
+              zizmor.enable = true;
             };
           };
 
