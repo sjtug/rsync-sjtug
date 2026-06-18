@@ -103,6 +103,7 @@
                   ./sqls
                   ./tests/migrations
                   (craneLib.fileset.commonCargoSources ./rsync-core)
+                  (craneLib.fileset.commonCargoSources ./workspace-hack)
                   (craneLib.fileset.commonCargoSources crate)
                 ]
                 ++ lib.optionals (crate == ./rsync-gateway) [
@@ -217,7 +218,6 @@
 
             programs = {
               nixfmt.enable = true;
-              taplo.enable = true;
               zizmor.enable = true;
             };
           };
@@ -274,7 +274,7 @@
             my-workspace-toml-fmt = craneLib.taploFmt {
               src = pkgs.lib.sources.sourceFilesBySuffices src [ ".toml" ];
               # taplo arguments can be further customized below as needed
-              # taploExtraArgs = "--config ./taplo.toml";
+              taploExtraArgs = "--config ./.taplo.toml";
             };
 
             # Audit dependencies

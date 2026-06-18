@@ -50,6 +50,7 @@ tracing = "0.1"
 unix_mode = "0.1"
 url = "2.5"
 zeroize = { version = "1.8", features = ["derive"] }
+workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]
 proptest = "1.6"
