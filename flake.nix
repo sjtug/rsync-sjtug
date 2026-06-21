@@ -179,6 +179,16 @@
               }
             )
           ) crates;
+
+          releaseTarball = pkgs.runCommand "rsync-sjtug-${muslTarget}-release" { } ''
+            archive=rsync-sjtug-${muslTarget}
+            mkdir -p "dist/$archive/bin" "$out"
+            cp ${workspaces-musl."rsync-fetcher"}/bin/rsync-fetcher "dist/$archive/bin/"
+            cp ${workspaces-musl."rsync-gateway"}/bin/rsync-gateway "dist/$archive/bin/"
+            cp ${workspaces-musl."rsync-gc"}/bin/rsync-gc "dist/$archive/bin/"
+            tar -C dist -czf "$out/$archive.tar.gz" "$archive"
+            (cd "$out" && sha512sum "$archive.tar.gz" > "$archive.tar.gz.sha512")
+          '';
         in
         {
           _module.args.pkgs = import inputs.nixpkgs {
@@ -347,6 +357,8 @@
             workspaces
             // lib.mapAttrs' (pname: workspace: lib.nameValuePair "${pname}_musl" workspace) workspaces-musl
             // {
+              release-tarball = releaseTarball;
+
               postgres-image = import ./postgres/docker.nix {
                 inherit craneLib lib pkgs;
                 nix2container = inputs.nix2container.packages.${system}.nix2container;
