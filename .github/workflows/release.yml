@@ -9,12 +9,19 @@ permissions:
   contents: read
 
 jobs:
-  release:
-    name: Release static binaries
-    runs-on: ubuntu-latest
+  build_release_tarballs:
+    name: Build release tarball (${{ matrix.system }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-latest
+          - system: aarch64-linux
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
-      contents: write
-      id-token: write
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -26,20 +33,34 @@ jobs:
           extra_nix_config: |
             keep-env-derivations = true
             keep-outputs = true
-      - name: Build static binaries
+      - name: Build release tarball
         run: |
-          nix build .#rsync-fetcher_musl -Lv --out-link result-rsync-fetcher
-          nix build .#rsync-gateway_musl -Lv --out-link result-rsync-gateway
-          nix build .#rsync-gc_musl -Lv --out-link result-rsync-gc
-      - name: Create archive
-        run: |
-          archive=rsync-sjtug-x86_64-unknown-linux-musl
-          mkdir -p "dist/$archive/bin"
-          cp result-rsync-fetcher/bin/rsync-fetcher "dist/$archive/bin/"
-          cp result-rsync-gateway/bin/rsync-gateway "dist/$archive/bin/"
-          cp result-rsync-gc/bin/rsync-gc "dist/$archive/bin/"
-          tar -C dist -czf "$archive.tar.gz" "$archive"
-          sha512sum "$archive.tar.gz" > "$archive.tar.gz.sha512"
+          nix build .#packages.${{ matrix.system }}.release-tarball -Lv --out-link result-release-tarball
+          mkdir -p dist
+          cp result-release-tarball/*.tar.gz result-release-tarball/*.tar.gz.sha512 dist/
+      - name: Upload release tarball
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-tarball-${{ matrix.system }}
+          path: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha512
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub release
+    needs: build_release_tarballs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Download release tarballs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-tarball-*
+          path: dist
+          merge-multiple: true
       - name: Create GitHub release
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
         with:
@@ -48,8 +69,8 @@ jobs:
           body: ${{ github.event.head_commit.message }}
           draft: true
           files: |
-            rsync-sjtug-x86_64-unknown-linux-musl.tar.gz
-            rsync-sjtug-x86_64-unknown-linux-musl.tar.gz.sha512
+            dist/rsync-sjtug-*.tar.gz
+            dist/rsync-sjtug-*.tar.gz.sha512
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
